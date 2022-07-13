@@ -108,13 +108,14 @@ int t_dup (int fd) {
     return fd;
 }
 
-#define str_append(buf,str) pstrcat(buf, sizeof(buf),str);
+#define str_append(buf,str) strcat(buf, str);
 int t_open(const char *_Filename,int _OpenFlag,...) {
     Tcl_Channel chan;
     Tcl_Obj *path;
     char buf[1024], src[500];
     buf[0] = '\0';
     char* rdmode="RDONLY";
+    int isnative=0;
     // interpret openflags to tcl
     int flagMask = 1 << 15; // start with high-order bit...
     while( flagMask != 0 )   // loop terminates once all flags have been compared
@@ -127,15 +128,16 @@ int t_open(const char *_Filename,int _OpenFlag,...) {
        //  break;
        case O_WRONLY:
          rdmode="WRONLY";
+         isnative=1;
          break;
        case O_RDWR:
          rdmode="RDWR";
          break;
        case O_APPEND:
-         rdmode="APEND";
+         str_append(buf,"APPEND ");
          break;
        case O_CREAT:
-         rdmode="CREAT";
+         str_append(buf,"CREAT ");
          break;
        case O_TRUNC:
          str_append(buf,"TRUNC ");
@@ -179,7 +181,9 @@ char * t_fgets(char *_Buf,int _MaxCount,FILE *_File) {
                 break;
         if (0 == n)
             return NULL;
-        _Buf[n]='\0';
+        _Buf[n-1]='.';
+        _Buf[n]='.';
+        _Buf[n+1]='\0';
         return _Buf;
     } else {
         #undef fgets
@@ -193,18 +197,23 @@ FILE *t_fdopen(int fd, const char *mode) {
     //
     Tcl_Channel chan;
     int tcl_ret;
-    int native_fd;
+    int native_fd=0;
     FILE* f;
     lastchan=0;
     chan=_int2chan(fd);
+    int tclmode=TCL_READABLE;
+    if(&mode[0]!="r") {
+        tclmode=TCL_WRITABLE;
+    }
     if(chan==NULL) {
         #undef fdopen
         f = fdopen(fd, mode);
         #define fdopen t_fdopen
         return f;
     }
-    // Get Channel Handle, we wil just need the readable part....
-    tcl_ret = Tcl_GetChannelHandle(chan, TCL_READABLE, (void*)&native_fd);
+    // Get Channel Handle, we will just need the readable part....
+    if(tclmode&&Tcl_GetChannelMode (chan)) {};
+    tcl_ret = Tcl_GetChannelHandle(chan, tclmode, (void*)&native_fd);
     if (tcl_ret != TCL_OK) {
        lastchan=fd;
 	   return NULL;
@@ -213,7 +222,7 @@ FILE *t_fdopen(int fd, const char *mode) {
     #undef fdopen
     f = fdopen(native_fd, mode);
     #define fdopen t_fdopen
-    if (!f) {
+    if (f==NULL) {
         lastchan=fd;
         return NULL;
     }
@@ -237,14 +246,13 @@ int t_close(int _FileHandle) {
     //
     Tcl_Channel chan;
     chan=_int2chan(_FileHandle);
-    _tcl_channels[_FileHandle-CHANBASE]=NULL;
-   
-    _cleanchanlist();
     if(chan==NULL) {
         #undef close
         return close(_FileHandle);
         #define close t_close
     }
+    _tcl_channels[_FileHandle-CHANBASE]=NULL;
+    _cleanchanlist();
     return Tcl_Close(NULL,chan);
 }
 
@@ -275,4 +283,5 @@ long t_lseek(int _FileHandle,long _Offset,int _Origin) {
 }
 
 #endif // HAVE_TCL_H
+
 
