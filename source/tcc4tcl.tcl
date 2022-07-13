@@ -510,6 +510,7 @@ namespace eval tcc4tcl {
                 set tclstub tclstub86_64
                 set tkstub tkstub86_64
                 set DLLEXPORT "__attribute__ ((visibility(\"default\")))"
+                set libdir $dir/lib
             }
             "Windows*" {
                 #puts "Windows $dir"
@@ -523,9 +524,11 @@ namespace eval tcc4tcl {
                 set tclstub tclstub86elf
                 set tkstub tkstub86elf
                 set DLLEXPORT "__declspec(dllexport)"
+                set libdir $dir
             }
             default {
                 puts "Unknow Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
+                set libdir $dir/lib
                 return
             }
         }
@@ -672,7 +675,7 @@ namespace eval tcc4tcl {
 			return -code error "Unable to load tcc4tcl library"
 		}
 
-		::tcc4tcl $dir $tcc_type tcc
+		::tcc4tcl $libdir $tcc_type tcc
 		
 		foreach path $state(add_inc_path) {
 			tcc add_include_path $path
