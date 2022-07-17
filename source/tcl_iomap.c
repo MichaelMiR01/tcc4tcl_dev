@@ -236,15 +236,18 @@ FILE *t_fdopen(int fd, const char *mode) {
         #define fdopen t_fdopen
         return f;
     }
-    // Get Channel Handle, we wil just need the readable part....
+    // Get Channel Handle, we will just need the readable part....
     tcl_ret = Tcl_GetChannelHandle(chan, TCL_READABLE, (void*)&native_fd);
     if (tcl_ret != TCL_OK) {
        lastchan=fd;
 	   return NULL;
     }
-
+    #ifdef _WIN32
+    native_fd=_open_osfhandle(native_fd,O_RDONLY);
+    #endif
+    
     #undef fdopen
-    f = fdopen(native_fd, mode);
+    f = fdopen(native_fd, O_RDONLY);
     #define fdopen t_fdopen
     if (!f) {
         lastchan=fd;
