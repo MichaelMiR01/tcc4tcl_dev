@@ -85,7 +85,6 @@ int _chan2int (Tcl_Channel chan) {
         i++;
     }
     _tcl_channels[i]=chan;
-    //puts ("TCLCHAN opened");
     return CHANBASE+i;    
 }
 
@@ -117,8 +116,18 @@ int t_dup (int fd) {
     return fd;
 }
 
-#define str_append(buf,str) strcat(buf, str);
-int willCallRealOpen(const char * path, int flags, va_list args) {
+#define BUF_SIZE 1024
+static inline char *_strcatn(char *buf, const char *s)
+{
+    int len,lens;
+    len = strlen(buf);
+    lens = strlen(s);
+    if (len+lens < BUF_SIZE)
+        strcat(buf, s);
+    return buf;
+}
+
+int callOpen(const char * path, int flags, va_list args) {
     #undef open
   if (flags & (O_CREAT))
   {
@@ -135,7 +144,7 @@ int willCallRealOpen(const char * path, int flags, va_list args) {
 int t_open(const char *_Filename,int _OpenFlag,...) {
     Tcl_Channel chan;
     Tcl_Obj *path;
-    char buf[1024], src[500];
+    char buf[BUF_SIZE];
     buf[0] = '\0';
     char* rdmode="RDONLY";
     int readmode=1;
@@ -147,7 +156,7 @@ int t_open(const char *_Filename,int _OpenFlag,...) {
       switch( _OpenFlag & flagMask )
       {
        //case O_RDONLY:
-       //  str_append(buf,"RDONLY ");
+       //  _strcatn(buf,"RDONLY ");
        //  break;
        case O_WRONLY:
          rdmode="WRONLY";
@@ -166,23 +175,23 @@ int t_open(const char *_Filename,int _OpenFlag,...) {
          readmode=0;
          break;
        case O_TRUNC:
-         str_append(buf,"TRUNC ");
+         _strcatn(buf,"TRUNC ");
          readmode=0;
          break;
        case O_EXCL:
-         str_append(buf,"EXCL ");
+         _strcatn(buf,"EXCL ");
          break;
        case O_BINARY:
-         str_append(buf,"BINARY ");
+         _strcatn(buf,"BINARY ");
          break;
       }
       flagMask >>= 1;  // bit-shift the flag value one bit to the right
     }    
-    str_append(buf,rdmode);
+    _strcatn(buf,rdmode);
     if(readmode==0) {
         va_list args;
-            va_start(args, _OpenFlag);
-        return willCallRealOpen(_Filename, _OpenFlag, args);
+        va_start(args, _OpenFlag);
+        return callOpen(_Filename, _OpenFlag, args);
     }
     if (strcmp(_Filename, "-") == 0) {
         chan = Tcl_GetStdChannel(TCL_STDIN);
@@ -194,6 +203,62 @@ int t_open(const char *_Filename,int _OpenFlag,...) {
         Tcl_DecrRefCount(path);
     }    
     return _chan2int(chan);
+}
+
+int t_close(int _FileHandle) {
+    //
+    Tcl_Channel chan;
+    chan=_int2chan(_FileHandle);
+    if(chan!=NULL) {
+        _tcl_channels[_FileHandle-CHANBASE]=NULL;
+    }
+    _cleanchanlist();
+    
+    if(chan==NULL) {
+        #undef close
+        return close(_FileHandle);
+        #define close t_close
+    }
+    return Tcl_Close(NULL,chan);
+}
+
+int t_fclose(FILE* fp) {
+    if(fp!=NULL) {
+        #undef fclose
+        return fclose(fp);
+        #define fclose t_fclose
+    }
+    if(lastchan!=0) {
+        Tcl_Channel chan=_int2chan(lastchan);
+        t_close(lastchan);
+        lastchan=0;
+    }
+    return 1;
+}
+
+long t_lseek(int _FileHandle,long _Offset,int _Origin) {
+    //
+    Tcl_Channel chan;
+    chan=_int2chan(_FileHandle);
+    if(chan==NULL) {
+        #undef lseek
+        return lseek(_FileHandle,_Offset, _Origin);
+        #define lseek t_lseek
+    }
+    return Tcl_Seek(chan, _Offset, _Origin);
+}
+
+int t_read(int _FileHandle,void *_DstBuf,unsigned int _MaxCharCount) {
+    //
+    Tcl_Channel chan;
+    chan=_int2chan(_FileHandle);
+    if(chan==NULL) {
+        #undef read
+        return read(_FileHandle,_DstBuf,_MaxCharCount);
+        #define read t_read
+    }
+    return Tcl_Read(chan, (char * )_DstBuf, _MaxCharCount);
+
 }
 
 char * t_fgets(char *_Buf,int _MaxCount,FILE *_File) {
@@ -239,6 +304,10 @@ FILE *t_fdopen(int fd, const char *mode) {
     // Get Channel Handle, we will just need the readable part....
     tcl_ret = Tcl_GetChannelHandle(chan, TCL_READABLE, (void*)&native_fd);
     if (tcl_ret != TCL_OK) {
+       if(lastchan!=0) {
+           // seems to open new fd without closing the old
+           t_close(fd);
+       }
        lastchan=fd;
 	   return NULL;
     }
@@ -250,65 +319,16 @@ FILE *t_fdopen(int fd, const char *mode) {
     f = fdopen(native_fd, O_RDONLY);
     #define fdopen t_fdopen
     if (!f) {
+       if(lastchan!=0) {
+           // seems to open new fd without closing the old
+           t_close(fd);
+       }
         lastchan=fd;
         return NULL;
     }
     return f;
 }
 
-int t_read(int _FileHandle,void *_DstBuf,unsigned int _MaxCharCount) {
-    //
-    Tcl_Channel chan;
-    chan=_int2chan(_FileHandle);
-    if(chan==NULL) {
-        #undef read
-        return read(_FileHandle,_DstBuf,_MaxCharCount);
-        #define read t_read
-    }
-    return Tcl_Read(chan, (char * )_DstBuf, _MaxCharCount);
-
-}
-
-int t_close(int _FileHandle) {
-    //
-    Tcl_Channel chan;
-    chan=_int2chan(_FileHandle);
-    _tcl_channels[_FileHandle-CHANBASE]=NULL;
-   
-    _cleanchanlist();
-    if(chan==NULL) {
-        #undef close
-        return close(_FileHandle);
-        #define close t_close
-    }
-    return Tcl_Close(NULL,chan);
-}
-
-int t_fclose(FILE* fp) {
-    if(fp!=NULL) {
-        #undef fclose
-        return fclose(fp);
-        #define fclose t_fclose
-    }
-    if(lastchan!=0) {
-        Tcl_Channel chan=_int2chan(lastchan);
-        t_close(lastchan);
-        lastchan=0;
-    }
-    return 1;
-}
-
-long t_lseek(int _FileHandle,long _Offset,int _Origin) {
-    //
-    Tcl_Channel chan;
-    chan=_int2chan(_FileHandle);
-    if(chan==NULL) {
-        #undef lseek
-        return lseek(_FileHandle,_Offset, _Origin);
-        #define lseek t_lseek
-    }
-    return Tcl_Seek(chan, _Offset, _Origin);
-}
 
 #endif // HAVE_TCL_H
 
