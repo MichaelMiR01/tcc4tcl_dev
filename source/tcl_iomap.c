@@ -8,8 +8,13 @@
     Tcl IO Functions work on Tcl_Channel, io.h operate on int handles, 
     so we additionally need a mapping//hashtable to translate from one to the other
     
-    in tcc.c beneath include tcctools.c
-    #include "tcl_iomap.c"
+    in tcc.c beneath include tcc.h
+    #include "tcc.h"
+    #include "../tcl_iomap.c"
+    #if ONE_SOURCE
+    # include "libtcc.c"
+    #endif
+    #include "tcctools.c"
 */    
 
 #ifdef HAVE_TCL_H
