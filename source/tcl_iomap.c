@@ -9,12 +9,12 @@
     so we additionally need a mapping//hashtable to translate from one to the other
     
     in tcc.c beneath include tcc.h
-    #include "tcc.h"
-    #include "../tcl_iomap.c"
+    # @include "tcc.h"
+    # @include "../tcl_iomap.c"
     #if ONE_SOURCE
-    # include "libtcc.c"
+    # @include "libtcc.c"
     #endif
-    #include "tcctools.c"
+    # @include "tcctools.c"
 */    
 
 #ifdef HAVE_TCL_H
@@ -296,7 +296,7 @@ FILE *t_fdopen(int fd, const char *mode) {
     //
     Tcl_Channel chan;
     int tcl_ret;
-    int native_fd;
+    int native_fd,fd1;
     FILE* f;
     lastchan=0;
     chan=_int2chan(fd);
@@ -316,13 +316,17 @@ FILE *t_fdopen(int fd, const char *mode) {
        lastchan=fd;
 	   return NULL;
     }
-    #ifdef _WIN32
-    native_fd=_open_osfhandle(native_fd,O_RDONLY);
-    #endif
-    
+
+	errno=0;
+	fd1=native_fd;
+	#ifdef _WIN32
+	fd1=_open_osfhandle(native_fd,O_RDONLY);
+	#endif
+
     #undef fdopen
-    f = fdopen(native_fd, O_RDONLY);
+    f=fdopen(fd1,"r");
     #define fdopen t_fdopen
+    
     if (!f) {
        if(lastchan!=0) {
            // seems to open new fd without closing the old
