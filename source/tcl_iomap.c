@@ -76,6 +76,11 @@ type stk_##name##_pop(stk_##name s) {					\
 		s->alloc /= 2;						\
 		s->buf = tcc_realloc(s->buf, s->alloc * sizeof(type));}	\
 	return tmp; }							\
+type stk_##name##_peek(stk_##name s) {					\
+	type tmp;							\
+	if (!s->len) abort();						\
+	tmp = s->buf[s->len-1];						\
+	return tmp; }							\
 void stk_##name##_delete(stk_##name s) {				\
 	tcc_free(s->buf); tcc_free(s); }
  
@@ -240,7 +245,7 @@ int t_open(const char *_Filename,int _OpenFlag,...) {
     }
     if (strcmp(_Filename, "-") == 0) {
         chan = Tcl_GetStdChannel(TCL_STDIN);
-        _Filename = " stdin";
+        _Filename = "stdin";
     } else {
         path = Tcl_NewStringObj(_Filename,-1);
         Tcl_IncrRefCount(path);
@@ -317,7 +322,7 @@ char * t_fgets(char *_Buf,int _MaxCount,FILE *_File) {
     if(_File==NULL) {
         // tcl mode
         if(stk_size(chan_stk)) {
-            lastchan=stk_int_pop(chan_stk);
+            lastchan=stk_int_peek(chan_stk);
         } 
         
         if(lastchan==0) {
