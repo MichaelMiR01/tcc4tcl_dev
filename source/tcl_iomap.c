@@ -88,7 +88,6 @@ DECL_STACK_TYPE(int, int)
 
 Tcl_Channel _tcl_channels[MAXCHAN];
 static int _chan_cnt =0;
-static int lastchan=0;
 static int _chaninit=0;
 static stk_int chan_stk;
 
