@@ -48,10 +48,50 @@
 #define O_BINARY 0x8000
 #endif
 
+
+/* taken from rosetta-code https://rosettacode.org/wiki/Stack#C */
+#define DECL_STACK_TYPE(type, name)					\
+typedef struct stk_##name##_t{type *buf; size_t alloc,len;}*stk_##name;	\
+stk_##name stk_##name##_create(size_t init_size) {			\
+	stk_##name s; if (!init_size) init_size = 4;			\
+	s = tcc_malloc(sizeof(struct stk_##name##_t));			\
+	if (!s) return 0;						\
+	s->buf = tcc_malloc(sizeof(type) * init_size);			\
+	if (!s->buf) { tcc_free(s); return 0; }				\
+	s->len = 0, s->alloc = init_size;				\
+	return s; }							\
+int stk_##name##_push(stk_##name s, type item) {			\
+	type *tmp;							\
+	if (s->len >= s->alloc) {					\
+		tmp = tcc_realloc(s->buf, s->alloc*2*sizeof(type));		\
+		if (!tmp) return -1; s->buf = tmp;			\
+		s->alloc *= 2; }					\
+	s->buf[s->len++] = item;					\
+	return s->len; }						\
+type stk_##name##_pop(stk_##name s) {					\
+	type tmp;							\
+	if (!s->len) abort();						\
+	tmp = s->buf[--s->len];						\
+	if (s->len * 2 <= s->alloc && s->alloc >= 8) {			\
+		s->alloc /= 2;						\
+		s->buf = tcc_realloc(s->buf, s->alloc * sizeof(type));}	\
+	return tmp; }							\
+void stk_##name##_delete(stk_##name s) {				\
+	tcc_free(s->buf); tcc_free(s); }
+ 
+#define stk_empty(s) (!(s)->len)
+#define stk_size(s) ((s)->len)
+ 
+DECL_STACK_TYPE(int, int)
+
+
+
 Tcl_Channel _tcl_channels[MAXCHAN];
 static int _chan_cnt =0;
 static int lastchan=0;
 static int _chaninit=0;
+static stk_int chan_stk;
+
 
 void _initchantable () {
     _tcl_channels[0]=NULL;
@@ -60,6 +100,7 @@ void _initchantable () {
     for(int i=0;i<MAXCHAN;i++) {
         _tcl_channels[i]=NULL;
     }
+    chan_stk = stk_int_create(0);
 }
 
 void _cleanchanlist () {
@@ -200,7 +241,7 @@ int t_open(const char *_Filename,int _OpenFlag,...) {
     }
     if (strcmp(_Filename, "-") == 0) {
         chan = Tcl_GetStdChannel(TCL_STDIN);
-        _Filename = "stdin";
+        _Filename = " stdin";
     } else {
         path = Tcl_NewStringObj(_Filename,-1);
         Tcl_IncrRefCount(path);
@@ -228,15 +269,18 @@ int t_close(int _FileHandle) {
 }
 
 int t_fclose(FILE* fp) {
+    int lastchan=0;
     if(fp!=NULL) {
         #undef fclose
         return fclose(fp);
         #define fclose t_fclose
     }
+    if(stk_size(chan_stk)) {
+        lastchan=stk_int_pop(chan_stk);
+    } 
     if(lastchan!=0) {
         Tcl_Channel chan=_int2chan(lastchan);
         t_close(lastchan);
-        lastchan=0;
     }
     return 1;
 }
@@ -264,13 +308,19 @@ int t_read(int _FileHandle,void *_DstBuf,unsigned int _MaxCharCount) {
     }
     return Tcl_Read(chan, (char * )_DstBuf, _MaxCharCount);
 
-}
+} 
 
 char * t_fgets(char *_Buf,int _MaxCount,FILE *_File) {
     //
+     int lastchan=0;
     _Buf[0]='\0';
+    
     if(_File==NULL) {
         // tcl mode
+        if(stk_size(chan_stk)) {
+            lastchan=stk_int_pop(chan_stk);
+        } 
+        
         if(lastchan==0) {
             return NULL;
         }
@@ -298,7 +348,6 @@ FILE *t_fdopen(int fd, const char *mode) {
     int tcl_ret;
     int native_fd,fd1;
     FILE* f;
-    lastchan=0;
     chan=_int2chan(fd);
     if(chan==NULL) {
         #undef fdopen
@@ -309,11 +358,7 @@ FILE *t_fdopen(int fd, const char *mode) {
     // Get Channel Handle, we will just need the readable part....
     tcl_ret = Tcl_GetChannelHandle(chan, TCL_READABLE, (void*)&native_fd);
     if (tcl_ret != TCL_OK) {
-       if(lastchan!=0) {
-           // seems to open new fd without closing the old
-           t_close(fd);
-       }
-       lastchan=fd;
+       stk_int_push(chan_stk, fd);
 	   return NULL;
     }
 
@@ -328,11 +373,7 @@ FILE *t_fdopen(int fd, const char *mode) {
     #define fdopen t_fdopen
     
     if (!f) {
-       if(lastchan!=0) {
-           // seems to open new fd without closing the old
-           t_close(fd);
-       }
-        lastchan=fd;
+        stk_int_push(chan_stk, fd);
         return NULL;
     }
     return f;
