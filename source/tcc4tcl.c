@@ -3,6 +3,7 @@
  * 
  *  Copyright (c) 2007 Mark Janssen
  *  Copyright (c) 2014 Roy Keene
+ *  Modified 2022 by Michael Richter
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -47,8 +48,8 @@ static void Tcc4tclCCommandDeleteProc(ClientData cdata) {
 
 	ts = (struct TclTCCState *) cdata;
 	s = ts->s;
-	/* carefule with this */
-	/* tcc_delete will also kill our compiled code */
+	/* carefull with this */
+	/* regular tcc_delete will also kill our compiled code */
 	/* so we need to use a modified version that kills all, but runtime_memory */
 	/* modified version in tcl_iomap.c */
 	tcc_delete_run(s);

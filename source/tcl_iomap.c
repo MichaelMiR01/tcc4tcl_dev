@@ -37,6 +37,11 @@
 #define fgets t_fgets
 #define dup t_dup
 
+// tcc_run_free is only used in context of tcc_delete
+// and as we don't want the runtime memory to be freed
+// we just define it to an empty func
+#define tcc_run_free tcc_run_free_dummy
+
 #define MAXCHAN 128
 #define CHANBASE 10000
 
@@ -381,12 +386,12 @@ FILE *t_fdopen(int fd, const char *mode) {
     return f;
 }
 
-// this is a modified copy of tcc_delete in libtcc.c from mob  d631780f 2022-07-27
+// this is a modified copy of  tcc_delete in libtcc.c from mob  d631780f 2022-07-27
 // for other releases of tcc to integrate please look up the according code and modify here
 // it deletes all resources except the runtime memory
 // since we will need to keep this in case tcc4tcl gets called multiple times in one session
 // else the compiled runtime is discarded
-// so, tcc4tcl leaks memory, because runtime will never be freed!
+// so, tcc4tcl leaks memory, because runtime memory will never be freed!
 
 void tcc_delete_run(TCCState *s1)
 {
@@ -417,8 +422,9 @@ void tcc_delete_run(TCCState *s1)
     cstr_free(&s1->cmdline_incl);
 #ifdef TCC_IS_NATIVE
     /* free runtime memory */
-    /* nope, we still need this to run the code, since tcc4tcl will create multiple compilers */
+    /* modified here: we still need this to run the code, since tcc4tcl will create multiple compilers */
     //tcc_run_free(s1);
+    /* end modified */
 #endif
     tcc_free(s1->dState);
     tcc_free(s1);
