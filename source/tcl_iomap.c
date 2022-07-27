@@ -37,11 +37,6 @@
 #define fgets t_fgets
 #define dup t_dup
 
-// tcc_run_free is only used in context of tcc_delete
-// and as we don't want the runtime memory to be freed
-// we just define it to an empty func
-#define tcc_run_free tcc_run_free_dummy
-
 #define MAXCHAN 128
 #define CHANBASE 10000
 
