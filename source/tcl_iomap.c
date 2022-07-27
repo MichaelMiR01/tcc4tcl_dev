@@ -89,8 +89,6 @@ void stk_##name##_delete(stk_##name s) {				\
  
 DECL_STACK_TYPE(int, int)
 
-
-
 Tcl_Channel _tcl_channels[MAXCHAN];
 static int _chan_cnt =0;
 static int _chaninit=0;
@@ -383,6 +381,51 @@ FILE *t_fdopen(int fd, const char *mode) {
     return f;
 }
 
+// this is a modified copy of tcc_delete in libtcc.c from mob  d631780f 2022-07-27
+// for other releases of tcc to integrate please look up the according code and modify here
+// it deletes all resources except the runtime memory
+// since we will need to keep this in case tcc4tcl gets called multiple times in one session
+// else the compiled runtime is discarded
+// so, tcc4tcl leaks memory, because runtime will never be freed!
+
+void tcc_delete_run(TCCState *s1)
+{
+    /* free sections */
+    tccelf_delete(s1);
+
+    /* free library paths */
+    dynarray_reset(&s1->library_paths, &s1->nb_library_paths);
+    dynarray_reset(&s1->crt_paths, &s1->nb_crt_paths);
+
+    /* free include paths */
+    dynarray_reset(&s1->include_paths, &s1->nb_include_paths);
+    dynarray_reset(&s1->sysinclude_paths, &s1->nb_sysinclude_paths);
+
+    tcc_free(s1->tcc_lib_path);
+    tcc_free(s1->soname);
+    tcc_free(s1->rpath);
+    tcc_free(s1->elf_entryname);
+    tcc_free(s1->init_symbol);
+    tcc_free(s1->fini_symbol);
+    tcc_free(s1->outfile);
+    tcc_free(s1->deps_outfile);
+    dynarray_reset(&s1->files, &s1->nb_files);
+    dynarray_reset(&s1->target_deps, &s1->nb_target_deps);
+    dynarray_reset(&s1->pragma_libs, &s1->nb_pragma_libs);
+    dynarray_reset(&s1->argv, &s1->argc);
+    cstr_free(&s1->cmdline_defs);
+    cstr_free(&s1->cmdline_incl);
+#ifdef TCC_IS_NATIVE
+    /* free runtime memory */
+    /* nope, we still need this to run the code, since tcc4tcl will create multiple compilers */
+    //tcc_run_free(s1);
+#endif
+    tcc_free(s1->dState);
+    tcc_free(s1);
+#ifdef MEM_DEBUG
+    if (0 == --nb_states)
+        tcc_memcheck();
+#endif
+}
 
 #endif // HAVE_TCL_H
-

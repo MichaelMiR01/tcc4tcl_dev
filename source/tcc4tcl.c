@@ -30,11 +30,12 @@
 
 #include "tcc.h"
 
-
 struct TclTCCState {
 	TCCState *s;
 	int relocated;
 };
+
+void tcc_delete_run(TCCState *s1);
 
 static void Tcc4tclErrorFunc(Tcl_Interp * interp, char * msg) {
 	Tcl_AppendResult(interp, msg, "\n", NULL);
@@ -46,7 +47,12 @@ static void Tcc4tclCCommandDeleteProc(ClientData cdata) {
 
 	ts = (struct TclTCCState *) cdata;
 	s = ts->s;
-
+	/* carefule with this */
+	/* tcc_delete will also kill our compiled code */
+	/* so we need to use a modified version that kills all, but runtime_memory */
+	/* modified version in tcl_iomap.c */
+	tcc_delete_run(s);
+	
 	ts->s = NULL;
 
 	ckfree((void *) ts);
