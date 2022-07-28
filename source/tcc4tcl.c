@@ -287,7 +287,17 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		// 0.9.26 to 0.9.27 the enum changed
 		"","memory", "exe", "dll", "obj", "preprocess",    (char *) NULL
 	};
-
+	// since tcc devel keeps changing the order of TCC_OUTPUT_ options we have to map the defined macros back to tcc4tcl textual tpyes, sigh
+	static CONST int enumtypes[] = {
+		0,
+		TCC_OUTPUT_MEMORY,
+		TCC_OUTPUT_EXE,
+		TCC_OUTPUT_DLL,
+		TCC_OUTPUT_OBJ,
+		TCC_OUTPUT_PREPROCESS,
+		0
+	};
+	
 	if (objc < 3 || objc > 4) {
 		Tcl_WrongNumArgs(interp, 1, objv, "tcc_libary_path ?output_type? handle");
 		return TCL_ERROR;
@@ -299,8 +309,9 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		if (Tcl_GetIndexFromObj(interp, objv[2], types, "type", 0, &index) != TCL_OK) {
 			return TCL_ERROR;
 		}
+		index = enumtypes[index];
 	}
-
+	
 	s = tcc_new();
 	
 	if (s == NULL) {
