@@ -30,6 +30,7 @@
 #define	_UNISTD_H	1
 
 #include "tcc.h"
+#include "config_tcc4tcl.h"
 
 struct TclTCCState {
 	TCCState *s;
@@ -52,7 +53,9 @@ static void Tcc4tclCCommandDeleteProc(ClientData cdata) {
 	/* regular tcc_delete will also kill our compiled code */
 	/* so we need to use a modified version that kills all, but runtime_memory */
 	/* modified version in tcl_iomap.c */
-	tcc_delete_run(s);
+	#ifndef TCC4TCL_NODELETE
+	    tcc_delete(s);
+	#endif
 	
 	ts->s = NULL;
 
@@ -311,7 +314,7 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		}
 		index = enumtypes[index];
 	}
-	
+
 	s = tcc_new();
 	
 	if (s == NULL) {
