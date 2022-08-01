@@ -118,6 +118,15 @@ namespace eval tcc4tcl {
 
 		lappend state(add_inc_path) {*}$args
 	}
+	proc _drop_include_path {handle path} {
+		upvar #0 $handle state
+
+        # lremove RS oneliner from 
+        set ol $state(add_inc_path)
+        set ol [lsearch -all -inline -not -exact $ol $path]
+        set state(add_inc_path) $ol
+        #puts $ol
+	}
 
 	proc _add_library_path {handle args} {
 		upvar #0 $handle state
@@ -142,7 +151,6 @@ namespace eval tcc4tcl {
 
 		lappend state(add_symbol) {*}$args
 	}
-	
 	
 	proc _cwrap {handle name adefs rtype} {
 		upvar #0 $handle state
@@ -500,7 +508,16 @@ namespace eval tcc4tcl {
             "Linux-*" {
                 #puts "Linux"
                 $handle add_include_path  "${dir}/include/"
-                $handle add_include_path  "${dir}/include/stdinc/"
+                if {[string first mob $::TCC_VERSION]>-1} {
+                    # ok temporary patch to have mob includes next to stdinc
+                    if {[file exists "${dir}/include/stdinc_mob/"]} {
+                        $handle add_include_path  "${dir}/include/stdinc_mob/"
+                    } else {
+                        $handle add_include_path  "${dir}/include/stdinc/"
+                    }
+                } else {
+                    $handle add_include_path  "${dir}/include/stdinc/"
+                }
                 $handle add_include_path  "/usr/include/"
                 $handle add_include_path  "/usr/include/x86_64-linux-gnu"
                 $handle add_include_path  "${dir}/include/generic"
@@ -537,7 +554,10 @@ namespace eval tcc4tcl {
 			append code "#define [string trim "$macroName $macroVal"]\n"
 		}
 		append code $state(code) "\n"
-
+		
+		# undef DLLEXPORT, since tcl.h and tk.h may have it defined differntly from what we want
+		set code "#undef DLLEXPORT \n#undef DLLIMPORT \n$code"
+		
 		if {$state(type) == "exe" || $state(type) == "dll"} {
 			if {[info exists state(procs)] && [llength $state(procs)] > 0} {
 				set code "int _initProcs(Tcl_Interp *interp);\n\n$code"
@@ -570,7 +590,7 @@ namespace eval tcc4tcl {
 			 set code "#define USE_TK_STUBS 1\n#include <tk.h>\n$compiletkstubs\n$code"
 		}
 		set code "#include <tcl.h>\n$code"
-
+		
 		# Append additional generated code to support the output type
 		#puts "Type is $state(type)";
 		switch -- $state(type) {
@@ -613,6 +633,9 @@ namespace eval tcc4tcl {
 				set packageName [lindex $state(package) 0]
 				set packageVersion [lindex $state(package) 1]
 				set tclversion [lindex $state(package) 2]
+				if {$tclversion eq ""} {
+				    set tclversion "TCL_VERSION"
+				}
 				if {$tclversion ne "TCL_VERSION"} {
 				    #quote it out, it's not a macro probably
 				    set tclversion "\"$tclversion\""
@@ -622,7 +645,7 @@ namespace eval tcc4tcl {
 				}
 				append code "#ifndef DLLEXPORT \n"
 				append code "#define DLLEXPORT $DLLEXPORT\n"
-				append code "#endif \n" 
+				append code "#endif\n"
 				append code "DLLEXPORT \n"
 				append code "int [string totitle $packageName]_Init(Tcl_Interp *interp) \{\n"
 				append code "#ifdef USE_TCL_STUBS\n"
@@ -711,7 +734,6 @@ namespace eval tcc4tcl {
                         tcc command $procname {*}$cname_obj
                     }
                 }
-                return;
 			}
 
 			"package" - "dll" - "exe" {
@@ -757,7 +779,9 @@ namespace eval tcc4tcl {
             			if {$outfile==""} {
                 			set outfile $packageName
             			}
-
+                if {$state(type)=="exe"} {
+                    set outfileext "exe"
+                }
 				set outfile $outfile.$outfileext
 				if {[file isdir $packageName]} {
 					set outfile [file join $packageName/$outfile]
@@ -770,6 +794,7 @@ namespace eval tcc4tcl {
 		}
 
 		if {$hasTK>0} {
+		    puts "Starting TK"
             tkstart
         }
 		# Cleanup
@@ -993,5 +1018,5 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 }
 
 namespace eval tcc4tcl {namespace export cproc}
-package provide tcc4tcl "0.30"
+package provide tcc4tcl "0.40"
 
