@@ -22,7 +22,7 @@ Howto:
 
 this make the normal tcc and libtcc1.a
 	
-	./make_tcc4tcl.sh
+	make tcc4tcl
 
 now the neccessary files should be compiled, especially tcc4tcl.so
 
@@ -32,6 +32,7 @@ will make a subdir tcc4tcl-0.40.0-pkg
 
 4a build under windows
 	
+	prepare_build.bat
 	cd DIR/win32
 	build-tcc4tcl-win32.bat (-t 32 -c PATH/TO/GCC/gcc.exe)
 
