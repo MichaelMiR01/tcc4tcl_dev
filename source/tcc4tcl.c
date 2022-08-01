@@ -52,8 +52,9 @@ static void Tcc4tclCCommandDeleteProc(ClientData cdata) {
 	/* carefull with this */
 	/* regular tcc_delete will also kill our compiled code */
 	/* so we need to use a modified version that kills all, but runtime_memory */
-	/* modified version in tcl_iomap.c */
-	#ifndef TCC4TCL_NODELETE
+	/* therefor libtcc.c has to be tuned accordingly */
+	/* this should be done by modd_tcc.tcl automatically */
+	#ifdef TCC4TCL_DODELETE
 	    tcc_delete(s);
 	#endif
 	
