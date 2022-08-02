@@ -14,7 +14,7 @@ copy .\lib\* %tcc4tcldir%\lib
 copy .\lib\* %tccdir%\lib
 
 copy .\modify\*.bat %win32%
-
+copy .\modify\replace_bat_for_wine.tcl %win32%
 rem copy .\modify\VERSION %tccdir%
 
 set /p VERSION= <%tccdir%\VERSION
@@ -23,7 +23,7 @@ FOR %%? IN ("..\README") DO (
     echo %VERSION% mob %%~t?>%tccdir%\VERSION
 )
 
-copy .\modify\*.tcl %tccdir%
+copy .\modify\mod_tcc.tcl %tccdir%
 
 call ..\mod_tcc.tcl
 @if errorlevel 1 echo "Please run mod_tcc.c manually!"

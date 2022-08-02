@@ -16,11 +16,12 @@
 #endif
 #endif
 
+/*
 #ifdef _WIN32
 #include <stdint.h>
 typedef int64_t __time64_t;
 #endif
-
+*/
 
 #ifdef HAVE_TCL_H
 #ifndef USE_TCL_STUBS

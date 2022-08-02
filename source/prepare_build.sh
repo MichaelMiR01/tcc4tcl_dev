@@ -15,13 +15,14 @@ cp ./lib/* $tcc4tcldir/lib
 cp ./lib/* $tccdir/lib
 
 cp ./modify/*.bat $win32
+cp ./modify/replace_bat_for_wine.tcl $win32
 #cp ./modify/VERSION $tccdir
 version=`head $tccdir/VERSION`
 at=$(stat -c '%.19y' $tccdir/README)
 echo>$tccdir/VERSION "$version mob $at"
 echo "Version $at"
 
-cp ./modify/*.tcl $tccdir
+cp ./modify/mod_tcc.tcl $tccdir
 
 #modify tcc.c
 $tccdir/mod_tcc.tcl 
