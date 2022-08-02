@@ -363,6 +363,22 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	return TCL_OK;
 }
 
+#if (defined(_WIN32) && (defined(_MSC_VER)|| defined(__TINYC__)  || (defined(__BORLANDC__) && (__BORLANDC__ >= 0x0550)) || defined(__LCC__) || defined(__WATCOMC__) || (defined(__GNUC__) && defined(__declspec))))
+#undef DLLIMPORT
+#undef DLLEXPORT
+#   define DLLIMPORT __declspec(dllimport)
+#   define DLLEXPORT __declspec(dllexport)
+#else
+#   define DLLIMPORT __attribute__(dllimport)
+#   if defined(__GNUC__) && __GNUC__ > 3
+#       define DLLEXPORT __attribute__ ((visibility("default")))
+#   else
+#       define DLLEXPORT
+#   endif
+#endif
+
+
+DLLEXPORT
 int Tcc4tcl_Init(Tcl_Interp *interp) {
 #ifdef USE_TCL_STUBS
 	if (Tcl_InitStubs(interp, TCL_VERSION , 0) == 0L) {
@@ -373,4 +389,11 @@ int Tcc4tcl_Init(Tcl_Interp *interp) {
 	Tcl_CreateObjCommand(interp, "tcc4tcl", Tcc4tclCreateCmd, NULL, NULL);
     Tcl_SetVar(interp,  "::TCC_VERSION", TCC_VERSION, 0);
 	return TCL_OK;
+}
+
+DLLEXPORT
+int Tcc_Init(Tcl_Interp *interp) {
+    //# ok, this is strange, but compiling tcc4tcl with tcc itself will mangle the internal dll name to tcc
+    //# and thus tcl load will try to call into Tcc_Init
+    return Tcc4tcl_Init(interp);
 }

@@ -17,31 +17,32 @@ set tcc4tcldir=..\tcc4tcl
 set win32=.
 set BIN=
 set /p VERSION= <%tccdir%\VERSION
-
+set OPTIONS=
 goto :a0
 :a2
 shift
 :a3
 shift
 :a0
-if not "%1"=="-c" goto :a1
+if not _%1_==_-c_ goto :a1
 set CC=%~2
-if "%2"=="cl" set CC=@call :cl
+if _%2_==_cl_ set CC=@call :cl
 goto :a2
 :a1
-if "%1"=="-t" set T=%2&& goto :a2
-if "%1"=="-v" set VERSION=%~2&& goto :a2
-if "%1"=="-i" set INST=%2&& goto :a2
-if "%1"=="-b" set BIN=%2&& goto :a2
-if "%1"=="-d" set DOC=yes&& goto :a3
-if "%1"=="-x" set EXES_ONLY=yes&& goto :a3
-if "%1"=="-u" set HAS_WIN32_DIR=no&& goto :a3
-if "%1"=="" goto :p1
+if _%1_==_-t_ set T=%2&& goto :a2
+if _%1_==_-v_ set VERSION=%~2&& goto :a2
+if _%1_==_-i_ set INST=%2&& goto :a2
+if _%1_==_-b_ set BIN=%2&& goto :a2
+if _%1_==_-d_ set DOC=yes&& goto :a3
+if _%1_==_-x_ set EXES_ONLY=yes&& goto :a3
+if _%1_==_-u_ set HAS_WIN32_DIR=no&& goto :a3
+if _%1_==_-o_ set OPTIONS=%OPTIONS% -%2&& goto :a2
+if _%1_==__ goto :p1
 :usage
-echo usage: build-tcc.bat [ options ... ]
+echo usage: build-tcc4tcl-win32.bat [ options ... ]
 echo options:
-echo   -c prog              use prog (gcc/tcc/cl) to compile tcc
-echo   -c "prog options"    use prog with options to compile tcc
+echo   -c prog              use prog (gcc/tcc/cl) to compile tcc4tcl
+echo   -c "prog options"    use prog with options to compile tcc4tcl
 echo   -t 32/64             force 32/64 bit default target
 echo   -v "version"         set tcc version
 echo   -i tccdir            install tcc into tccdir
@@ -125,8 +126,18 @@ echo Version %VERSION%
 echo T %T%
 echo HAS_WIN32_DIR %HAS_WIN32_DIR%
 
+for %%f in (*tcc.exe *tcc.dll) do @del %%f
+
+:compiler
+echo start building %D% 
+rem @echo off
+
+echo calling ./buildtcc.bat %*
+call ./build-tcc.bat %*
+echo Ok, now building tcc4tcl
+
 :config.h
-echo building config
+echo building tcc4tcl config
 echo>%tccdir%\config.h #define TCC_VERSION "%VERSION%"
 echo>> %tccdir%\config.h #ifdef TCC_TARGET_X86_64
 echo>> %tccdir%\config.h #define TCC_LIBTCC1 "libtcc1-64.a"
@@ -143,32 +154,26 @@ echo>>%tccdir%\config.h #define TCC_TARGET_I386 1
 echo>>%tccdir%\config.h #endif
 echo>>%tccdir%\config.h #ifdef _WIN32
 echo>>%tccdir%\config.h #define _USE_32BIT_TIME_T 1
-echo>>%tccdir%\config.h #include ^<stdint.h^>
-echo>>%tccdir%\config.h typedef __int64 __time64_t;
 echo>>%tccdir%\config.h #endif
-
-for %%f in (*tcc.exe *tcc.dll) do @del %%f
-
-:compiler
-echo start compiling %D% 
-rem @echo off
-
-rem %CC% -DC2STR %tccdir%/conftest.c -o %tccdir%/c2str.exe %D% 
-rem %tccdir%\c2str.exe %tccdir%\include\tccdefs.h %tccdir%\tccdefs_.h
-
-%CC% -o libtcc.dll -shared -s %tccdir%\libtcc.c %D% -DLIBTCC_AS_DLL -O2
-@if errorlevel 1 goto :the_end
-%CC% -s -o tcc.exe %tccdir%\tcc.c libtcc.dll %D% -DONE_SOURCE"=0" -O2 -fwhole-program
-echo start compiling %PX% %DX% 
-%CC% -o %PX%-tcc.exe %tccdir%\tcc.c %DX% -O2
 
 :tcl-stubs
 rem echo we need a tclstubs from gcc to build tcc4tcl
 set INCLUDES= -I../include/generic -I../include/generic/win -I../include/xlib 
 set FPATH=../include/generic/
 call :getPath %CC% filename folder
-set AR=%folder%\ar -cr
+
+set STATICLIBC="-static-libgcc"
+if "%filename%"=="tcc.exe" (
+    set STATICLIBC=
+)
+
+set AR=%folder%\%filename% -ar 
+if exist %folder%\ar.exe (
+    set AR=%folder%\ar -cr
+)
+
 echo %CC% %AR%
+
 %CC% -m%T% -D_WIN%T% -c %FPATH%tclStubLib.c %INCLUDES%
 %CC% -m%T% -D_WIN%T% -c %FPATH%tclOOStubLib.c %INCLUDES%
 %CC% -m%T% -D_WIN%T% -c %FPATH%tclTomMathStubLib.c %INCLUDES%
@@ -178,47 +183,18 @@ del *.o
 del libtclstub86.a
 
 rem build all other stubs by tcc
+echo Ok, building stub libs
 call .\make_stubs.bat
 
-
-
-
 :tcc4tcl
-echo starting build tcc4tcl
+echo starting compiling tcc4tcl
 rem %CC% %target% %tccdir%/tcc.c -o tcc.exe -ltcc -Llibtcc
 echo %CC% %target% -Wfatal-errors -DHAVE_TCL_H %D% -I%tccdir% -I%topdir%/include/generic -c %tccdir%/tcc.c  -Llib -L%topdir%/lib -ltclstub86 -o"libtcc.o" -O2
-%CC% %target% -Wfatal-errors -DHAVE_TCL_H %D% -I%tccdir% -I%topdir%/include/generic -c %tccdir%/tcc.c  -Llib -L%topdir%/lib -ltclstub86 -o"libtcc.o" -O2
-echo %CC% %target% -shared -s -DHAVE_TCL_H %D% -static-libgcc -I%tccdir% -I%topdir%/include/generic -I%topdir%/include/generic/win -Itcc  %tcc4tcldir%/tcc4tcl.c  -Llib -L%topdir%/lib -ltclstub86  "libtcc.o" -o"tcc4tcl.dll"
-%CC% %target% -shared -s -DHAVE_TCL_H %D% -static-libgcc -I%tccdir% -I%topdir%/include/generic -I%topdir%/include/generic/win -Itcc  %tcc4tcldir%/tcc4tcl.c  -Llib -L%topdir%/lib -ltclstub86  "libtcc.o" -o"tcc4tcl.dll"
+%CC% %target% -Wfatal-errors -DHAVE_TCL_H %D% -I%tccdir% -I%topdir%/include/generic -c %tccdir%/tcc.c -o"libtcc.o" -O2
+echo %CC% %target% -shared -s -DHAVE_TCL_H %D% %STATICLIBC% -I%tccdir% -I%topdir%/include/generic -I%topdir%/include/generic/win -Itcc  %tcc4tcldir%/tcc4tcl.c  -Llib -L%topdir%/lib -ltclstub86  "libtcc.o" -o"tcc4tcl.dll"
+%CC% %target% -shared -s -DHAVE_TCL_H %D% %STATICLIBC% -I%tccdir% -I%topdir%/include/generic -I%topdir%/include/generic/win -Itcc  %tcc4tcldir%/tcc4tcl.c  -Llib -L%topdir%/lib -ltclstub86  "libtcc.o" -o"tcc4tcl.dll"
 
 @if "%EXES_ONLY%"=="yes" goto :files-done
-
-:copy-libtcc
-echo copy libtcc %tccdir% to %win32%\libtcc
-if not exist %win32%\libtcc mkdir %win32%\libtcc
-rem if not exist doc mkdir doc
-copy>nul %tccdir%\include\*.h %win32%\include
-copy>nul %tccdir%\tcclib.h %win32%\include
-copy>nul %tccdir%\libtcc.h %win32%\libtcc
-rem copy>nul ..\tests\libtcc_test.c examples
-rem copy>nul tcc-win32.txt doc
-
-.\tcc -impdef libtcc.dll -o %win32%\libtcc\libtcc.def
-@if errorlevel 1 goto :the_end
-
-:libtcc1.a
-set inc=-Iwin32 -Iwin32/winapi
-echo building libtcc1 with includes %inc%
-call :makelib %T%
-@if errorlevel 1 echo "failed to crosscompile libtcc1.a"
-@if exist %PX%-tcc.exe call :makelib %TX%
-@if errorlevel 1 echo "failed to crosscompile libtcc1.a"
-@set O1=libtcc1.o crt1.o crt1w.o wincrt1.o wincrt1w.o dllcrt1.o dllmain.o chkstk.o bcheck.o
-rem .\tcc %inc% -m32 -w -c %tccdir%/lib/bcheck.c
-.\tcc -m%T% -c %tccdir%/lib/bcheck.c -o lib/bcheck.o -g
-.\tcc -m%T% -c %tccdir%/lib/bt-exe.c -o lib/bt-exe.o
-.\tcc -m%T% -c %tccdir%/lib/bt-log.c -o lib/bt-log.o
-.\tcc -m%T% -c %tccdir%/lib/bt-dll.c -o lib/bt-dll.o
 
 rem @if errorlevel 1 goto :the_end
 echo ready...
@@ -247,7 +223,7 @@ copy .\*.tcl %BIN%\
 
 copy %tcc4tcldir%\lib\*.a %INST%\lib\
 copy %topdir%\lib\*.a %INST%\lib\
-copy %win32%\lib\*.a %INST%\lib\
+copy %win32%\lib\*.* %INST%\lib\
 copy .\lib\lib\*.a %INST%\lib\
 
 copy %tcc4tcldir%\lib\*.def %INST%\lib\
@@ -271,21 +247,6 @@ if not exist %INSTWIN32% mkdir %INSTWIN32%
 xcopy /s/i/q/y %win32%\include %INSTWIN32%
 
 :the_end
-exit /B %ERRORLEVEL%
-
-:makelib
-.\tcc -m%1 -c %tccdir%/%win32%/lib/libtcc1.c
-.\tcc -m%1 -c %win32%/lib/crt1.c
-.\tcc -m%1 -c %win32%/lib/crt1w.c
-.\tcc -m%1 -c %win32%/lib/wincrt1.c
-.\tcc -m%1 -c %win32%/lib/wincrt1w.c
-.\tcc -m%1 -c %win32%/lib/dllcrt1.c
-.\tcc -m%1 -c %win32%/lib/dllmain.c
-.\tcc -m%1 -c %win32%/lib/chkstk.S
-.\tcc -m%1 -c %tccdir%/%win32%/lib/alloca.S
-.\tcc -m%1 -c %tccdir%/%win32%/lib/alloca-bt.S
-.\tcc -m%1 -c %tccdir%/%win32%/lib/stdatomic.c
-.\tcc -m%1 -ar %win32%/lib/libtcc1-%1.a libtcc1.o crt1.o crt1w.o wincrt1.o wincrt1w.o dllcrt1.o dllmain.o chkstk.o alloca.o alloca-bt.o stdatomic.o
 exit /B %ERRORLEVEL%
 
 :getPath
