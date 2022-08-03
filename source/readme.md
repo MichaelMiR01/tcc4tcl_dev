@@ -1,46 +1,95 @@
-This set of files treis to automate the process of adopting new versions of tcc to tcc4tcl
+This set of files tries to automate the process of adopting new versions of tcc to tcc4tcl
+
 It consists of some scripts that try to modify tcc.c and hook in the tcl_iomap.c
+
 Furthermore it tries to hook the configure/make process as far as possible without modifying the Makefile
 
 Howto:
-1 Download tcc and unpack it into DIR
-2 Put tcc4tcl_altmake as a subdir int DIR
-3	Prepare build files
- 	
-	cd DIR/tcc4tcl_altmake
-	prepare_build.sh
 
-3a under window run prepare_build_win32.bat
-	then you have to manually adopt tcc.c
-	or run mod_tcc.tcl from a tclsh/tclkit
+1 Download tcc and unpack it into DIR
+
+2 Put tcc4tcl_altmake as a subdir int DIR
+
+3       Prepare build files
+
+        cd DIR/tcc4tcl_altmake
+        prepare_build.sh
+
+3a under window run 
+
+        prepare_build_win32.bat
+
+then you have to manually adopt tcc.c
+or run mod_tcc.tcl from a tclsh/tclkit
+The batch will try to call mod_tcc.tcl directly, 
+so if a tclsh is in your system path this may work
 
 4  build under linux:
-	
-	cd DIR
-	./configure
-	make
+
+        cd DIR
+        ./configure
+        make
 
 this make the normal tcc and libtcc1.a
-	
-	make tcc4tcl
+
+        make tcc4tcl
 
 now the neccessary files should be compiled, especially tcc4tcl.so
 
-	make pkg
+        make pkg
 
 will make a subdir tcc4tcl-0.40.0-pkg
 
-4a build under windows
-	
-	prepare_build.bat
-	cd DIR/win32
-	build-tcc4tcl-win32.bat (-t 32 -c PATH/TO/GCC/gcc.exe)
+4a build under windows:
+
+        cd DIR/win32
+        build-tcc4tcl-win32.bat (-t 32 -c PATH/TO/GCC/gcc.exe)
 
 will make a subdir tcc4tcl-0.40.0-pkg
 
 test:
-	cd tcc4tcl-0.40.0-pkg
-	tclsh test.tcl
 
+        cd tcc4tcl-0.40.0-pkg
+        tclsh test.tcl
 
+For wine users:
 
+the normal build-tcc.bat uses if (%1)== ... wich, at least under my version of wine, fail
+to avoid this, use replace_bat_for_wine.tcl wich will replace al () with _ _ in build-tcc.bat
+so it will work under wine (and still under windows also)
+
+Modifications to tcc sources
+
+        mod_tcc.tcl tries to find and modify only a few lines
+
+```     
+*** tcc.c       2022-08-03 22:02:39.308493800 +0200
+--- tcc.orig.c  2022-07-25 13:00:15.000000000 +0200
+***************
+*** 19,25 ****
+   */
+
+  #include "tcc.h"
+- #include "tcc4tcl/tcl_iomap.c"
+  #if ONE_SOURCE
+  # include "libtcc.c"
+  #endif
+
+--- 19,24 ----
+
+*** libtcc.c	2022-08-03 22:02:39.326872500 +0200
+--- libtcc.orig.c	2022-07-25 13:00:15.000000000 +0200
+***************
+*** 854,863 ****
+      cstr_free(&s1->cmdline_incl);
+  #ifdef TCC_IS_NATIVE
+      /* free runtime memory */
+! #ifndef HAVE_TCL_H
+!   tcc_run_free(s1);
+! #endif
+! 
+  #endif
+      tcc_free(s1->dState);
+      tcc_free(s1);
+--- 854,860 ----
+```
