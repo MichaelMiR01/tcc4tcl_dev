@@ -217,7 +217,7 @@ if not exist %BIN% mkdir %BIN%
 for %%f in (*tcc.exe *tcc.dll *.dll) do @copy>nul %%~ff %BIN%\%%~nf%%~xf
 copy %tccdir%\tcc4tcl\*.tcl %BIN%\
 copy %topdir%\tcc4tcl\*.tcl %BIN%\
-copy .\*.tcl %BIN%\
+rem copy .\*.tcl %BIN%\
 
 @if not exist %INST%\lib mkdir %INST%\lib
 

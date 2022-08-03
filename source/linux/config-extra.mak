@@ -40,24 +40,24 @@ B_O = bcheck.o bt-exe.o bt-log.o bt-dll.o
 # install progs & libs
 #make  tcc4tcl package
 pkg: tcc4tcl.so
-	-mkdir $(TCC4TCL_TRG)
-	-cp $(TCC4TCL_SRC)/*.tcl $(TCC4TCL_TRG)
-	-cp *.so $(TCC4TCL_TRG)
+	@-if [ ! -d $(TCC4TCL_TRG) ]; then mkdir $(TCC4TCL_TRG); fi
+	@-cp $(TCC4TCL_SRC)/*.tcl $(TCC4TCL_TRG)
+	@-cp *.so $(TCC4TCL_TRG)
 
-	$(call IBw,$(PROGS) $(PROGS_CROSS),"$(TCC4TCL_TRG)")
-	$(call IFw,$(LIBTCC1) $(B_O) $(LIBTCC1_U),"$(TCC4TCL_TRG)/lib")
-	
-	$(call IC,$(TOPSRC)/include/*, "$(TCC4TCL_TRG)/include")
-	$(call IC,$(TOPSRC)/include/*.h $(TOPSRC)/tcclib.h,"$(TCC4TCL_TRG)/include/stdinc")
-	$(call IC,$(TCC4TCL_SRC)/lib/*, "$(TCC4TCL_TRG)/lib")
-	$(call $(if $(findstring .so,$(LIBTCC)),IBw,IFw),$(LIBTCC),"$(TCC4TCL_TRG)")
-	$(call IF,$(TOPSRC)/libtcc.h,"$(TCC4TCL_TRG)/include/libtcc")
+	@$(call IBw,$(PROGS) $(PROGS_CROSS),"$(TCC4TCL_TRG)")
+	@$(call IFw,$(LIBTCC1) $(B_O) $(LIBTCC1_U),"$(TCC4TCL_TRG)/lib")
+	@
+	@$(call IC,$(TOPSRC)/include/*, "$(TCC4TCL_TRG)/include")
+	@$(call IC,$(TOPSRC)/include/*.h $(TOPSRC)/tcclib.h,"$(TCC4TCL_TRG)/include/stdinc")
+	@$(call IC,$(TCC4TCL_SRC)/lib/*, "$(TCC4TCL_TRG)/lib")
+	@$(call $(if $(findstring .so,$(LIBTCC)),IBw,IFw),$(LIBTCC),"$(TCC4TCL_TRG)")
+	@$(call IF,$(TOPSRC)/libtcc.h,"$(TCC4TCL_TRG)/include/libtcc")
+	@$(call IC,$(TOPSRC)/win32/examples/*, "$(TCC4TCL_TRG)/examples")
 ifneq "$(wildcard $(LIBTCC1_W))" ""
-	$(call IC,$(TOPSRC)/win32/*, "$(TCC4TCL_TRG)/win32")
-	$(call IFw,$(TOPSRC)/win32/lib/*.def $(LIBTCC1_W),"$(TCC4TCL_TRG)/win32/lib")
-	$(call IR,$(TOPSRC)/win32/include,"$(TCC4TCL_TRG)/win32/include")
-	$(call IF,$(TOPSRC)/include/*.h $(TOPSRC)/tcclib.h,"$(TCC4TCL_TRG)/win32/include")
+	@$(call IC,$(TOPSRC)/win32/*, "$(TCC4TCL_TRG)/win32")
+	@$(call IFw,$(TOPSRC)/win32/lib/*.def $(LIBTCC1_W),"$(TCC4TCL_TRG)/win32/lib")
+	@$(call IR,$(TOPSRC)/win32/include,"$(TCC4TCL_TRG)/win32/include")
+	@$(call IF,$(TOPSRC)/include/*.h $(TOPSRC)/tcclib.h,"$(TCC4TCL_TRG)/win32/include")
 endif
-
-	-rm -f $(TCC4TCL_TRG)/include/*  2> /dev/null
+	@find $(TCC4TCL_TRG)/include -maxdepth 1 -type f -delete
 
