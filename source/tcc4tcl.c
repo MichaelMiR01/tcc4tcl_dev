@@ -390,10 +390,3 @@ int Tcc4tcl_Init(Tcl_Interp *interp) {
     Tcl_SetVar(interp,  "::TCC_VERSION", TCC_VERSION, 0);
 	return TCL_OK;
 }
-
-DLLEXPORT
-int Tcc_Init(Tcl_Interp *interp) {
-    //# ok, this is strange, but compiling tcc4tcl with tcc itself will mangle the internal dll name to tcc
-    //# and thus tcl load will try to call into Tcc_Init
-    return Tcc4tcl_Init(interp);
-}
