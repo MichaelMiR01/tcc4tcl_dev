@@ -63,31 +63,28 @@ Modifications to tcc sources
         mod_tcc.tcl tries to find and modify only a few lines
 
 ```     
-*** tcc.c       2022-08-03 22:02:39.308493800 +0200
---- tcc.orig.c  2022-07-25 13:00:15.000000000 +0200
+*** tcc.c      
 ***************
 *** 19,25 ****
    */
 
   #include "tcc.h"
-- #include "tcc4tcl/tcl_iomap.c"
++ #include "tcc4tcl/tcl_iomap.c"
   #if ONE_SOURCE
   # include "libtcc.c"
   #endif
 
 --- 19,24 ----
 
-*** libtcc.c	2022-08-03 22:02:39.326872500 +0200
---- libtcc.orig.c	2022-07-25 13:00:15.000000000 +0200
+*** libtcc.c	
 ***************
 *** 854,863 ****
       cstr_free(&s1->cmdline_incl);
   #ifdef TCC_IS_NATIVE
       /* free runtime memory */
-! #ifndef HAVE_TCL_H
-!   tcc_run_free(s1);
-! #endif
-! 
++ #ifndef HAVE_TCL_H
+    tcc_run_free(s1);
++ #endif
   #endif
       tcc_free(s1->dState);
       tcc_free(s1);
