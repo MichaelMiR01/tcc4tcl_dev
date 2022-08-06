@@ -29,6 +29,6 @@ $tccdir/mod_tcc.tcl
 
 cp -r ./linux/* $tccdir
 cp -r ./include/* $tccdir/include/
-cp -r ./win32include/* $tccdir/win32/include/
+#cp -r ./win32include/* $tccdir/win32/include/
 
 #cp $tccdir/include/* $tccdir/include/stdinc

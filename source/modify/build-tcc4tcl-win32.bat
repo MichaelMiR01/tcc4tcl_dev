@@ -1,8 +1,7 @@
 @rem ------------------------------------------------------
 @rem batch file to build tcc using mingw, msvc or tcc itself
 @rem ------------------------------------------------------
-rem build-tcc4tcl-win32.bat -t 32 -c ../tcc_0.9.27-bin/gcc/bin/gcc.exe
-rem  .\build-tcc4tcl-win32.bat -t 32 -c ..\..\tcc_0.9.27-bin\gcc\bin\gcc.exe -i C:\D\Toolbox\tcl\tcc4tclinst
+rem  .\build-tcc4tcl-win32.bat -t 32 -c ..\..\tcc_0.9.27-bin\gcc\bin\gcc.exe -i ..\tcc4tclinst
 @echo off
 setlocal
 if "%1"=="-clean" goto :cleanup
@@ -134,6 +133,7 @@ rem @echo off
 
 echo calling ./buildtcc.bat %*
 call ./build-tcc.bat %*
+@if errorlevel 1 goto :the_end
 echo Ok, now building tcc4tcl
 
 :config.h
@@ -196,7 +196,7 @@ echo %CC% %target% -shared -s -DHAVE_TCL_H %D% %STATICLIBC% -I%tccdir% -I%topdir
 
 @if "%EXES_ONLY%"=="yes" goto :files-done
 
-rem @if errorlevel 1 goto :the_end
+@if errorlevel 1 goto :the_end
 echo ready...
 
 :tcc-doc.html
