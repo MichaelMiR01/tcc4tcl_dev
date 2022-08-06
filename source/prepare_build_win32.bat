@@ -30,7 +30,7 @@ call ..\mod_tcc.tcl
 
 xcopy /s/i/q/y .\linux\* %tccdir%
 xcopy /s/i/q/y .\include\* %tccdir%\include\
-xcopy /s/i/q/y .\win32include\* %tccdir%\win32\include\
+rem xcopy /s/i/q/y .\win32include\* %tccdir%\win32\include\
 
 copy %tccdir%\include\* %tccdir%\include\stdinc
 

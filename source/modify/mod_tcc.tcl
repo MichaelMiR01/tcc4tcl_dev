@@ -1,13 +1,11 @@
 #! /usr/bin/env tclsh
 catch {console show}
 cd [file dirname $argv0]
-
+#--------------------------------------------------------
 if {[file exists "tcc.orig.c"]} {
     # already ran thsi script?
     puts "Please check if tcc.c is already modified"
-    return
-}
-
+} else {
 set fh [open "tcc.c" r]
 set fhout [open "tcc.mod.c" w]
 set linenr 0
@@ -24,12 +22,13 @@ close $fhout
 
 file rename "tcc.c" "tcc.orig.c"
 file rename "tcc.mod.c" "tcc.c"
-
+}
+#--------------------------------------------------------
 if {[file exists "libtcc.orig.c"]} {
     # already ran thsi script?
     puts "Please check if libtcc.c is already modified"
-    return
-}
+    
+} else {
 
 set fh [open "libtcc.c" r]
 set fhout [open "libtcc.mod.c" w]
@@ -66,3 +65,31 @@ if {$oldversion==0} {
 
 file rename "libtcc.c" "libtcc.orig.c"
 file rename "libtcc.mod.c" "libtcc.c"
+}
+#--------------------------------------------------------
+if {[file exists "win32/include/_mingw.orig.h"]} {
+    # already ran thsi script?
+    puts "Please check if _mingw.h is already modified"
+    
+} else {
+
+set fh [open "win32/include/_mingw.h" r]
+set fhout [open "win32/include/_mingw.mod.h" w]
+
+set linenr 0
+while {[gets $fh line] > -1} {
+        incr linenr
+        if {[string eq [string trim $line] "#define _USE_32BIT_TIME_T"]==1} {
+            puts "Modified _mingw.h, adding #ifndef _USE_32BIT_TIME_T at line $linenr"
+            puts $fhout "#ifndef _USE_32BIT_TIME_T\n  #define _USE_32BIT_TIME_T\n#endif"
+            set line ""
+        }   
+        puts $fhout $line
+}
+close $fh
+close $fhout
+
+file rename "win32/include/_mingw.h" "win32/include/_mingw.orig.h"
+file rename "win32/include/_mingw.mod.h" "win32/include/_mingw.h"
+}
+#--------------------------------------------------------
