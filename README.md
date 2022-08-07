@@ -11,5 +11,5 @@ but overwrite them by #define and thus linking to TCL IO Versions where needed.
 
 Also contains some small patches/bugfixes to tcc4tcl to work properly with later versions of tcc
 
-Make/Build process batches are still experimental, but I hope to have this at hand when the next release is rolled out.
+Make/Build process is using original makefiles and nodifies/adds the necessary stuff to build and package tcc4tcl
 
