@@ -14,10 +14,10 @@ tcc4tcl: tcc4tcl.o libtcc4tcl.o
 # and converting two files to CRLF)
 TCC4TCL-VERSION = 0.40.0
 TCC4TCL_SRC = tcc4tcl
-TCC4TCL_TRG = tcc4tcl-pkg-$(TCC4TCL-VERSION)
+TCC4TCL_TRG = tcc4tcl-$(TCC4TCL-VERSION)
 TCC4TCL_TRGLIB = "$(TCC4TCL_TRG)/lib"
 TCC4TCL_TRGINC = "$(TCC4TCL_TRG)/include"
-TCC4TCL_TRGWIN = "$(TCC4TCL_TRG)/win32mob"
+TCC4TCL_TRGWIN = "$(TCC4TCL_TRG)/win32"
 
 INSTALL = install -m755
 INSTALLD = install -dm755
@@ -59,5 +59,5 @@ ifneq "$(wildcard $(LIBTCC1_W))" ""
 	@$(call IR,$(TOPSRC)/win32/include,"$(TCC4TCL_TRG)/win32/include")
 	@$(call IF,$(TOPSRC)/include/*.h $(TOPSRC)/tcclib.h,"$(TCC4TCL_TRG)/win32/include")
 endif
-	@find $(TCC4TCL_TRG)/include -maxdepth 1 -type f -delete
+	#@find $(TCC4TCL_TRG)/include -maxdepth 1 -type f -delete
 

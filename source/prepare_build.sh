@@ -15,6 +15,7 @@ cp ./lib/* $tcc4tcldir/lib
 cp ./lib/* $tccdir/lib
 
 cp ./modify/*.bat $win32
+cp ./modify/*.h $win32
 cp ./modify/replace_bat_for_wine.tcl $win32
 #cp ./modify/VERSION $tccdir
 version=`head $tccdir/VERSION`
