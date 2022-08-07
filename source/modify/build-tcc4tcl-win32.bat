@@ -131,19 +131,21 @@ for %%f in (*tcc.exe *tcc.dll) do @del %%f
 echo start building %D% 
 rem @echo off
 
-echo calling ./buildtcc.bat %*
-call ./build-tcc.bat %*
+set CC2="%CC% -include conf_win32.h -O2 -s"
+
+echo calling ./buildtcc.bat  -t %T% -c %CC2%
+call ./build-tcc.bat -t %T% -c %CC2%
 @if errorlevel 1 goto :the_end
 echo Ok, now building tcc4tcl
 
 :config.h
 echo building tcc4tcl config
 echo>%tccdir%\config.h #define TCC_VERSION "%VERSION%"
-echo>> %tccdir%\config.h #ifdef TCC_TARGET_X86_64
-echo>> %tccdir%\config.h #define TCC_LIBTCC1 "libtcc1-64.a"
-echo>> %tccdir%\config.h #else
-echo>> %tccdir%\config.h #define TCC_LIBTCC1 "libtcc1-32.a"
-echo>> %tccdir%\config.h #endif
+echo>>%tccdir%\config.h #ifdef TCC_TARGET_X86_64
+echo>>%tccdir%\config.h #define TCC_LIBTCC1 "libtcc1-64.a"
+echo>>%tccdir%\config.h #else
+echo>>%tccdir%\config.h #define TCC_LIBTCC1 "libtcc1-32.a"
+echo>>%tccdir%\config.h #endif
 echo>>%tccdir%\config.h #ifdef _WIN32
 echo>>%tccdir%\config.h #define CONFIG_WIN32 1
 echo>>%tccdir%\config.h #define TCC_TARGET_PE 1
@@ -209,7 +211,7 @@ cmd /c makeinfo --html --no-split ../tcc-doc.texi -o doc/tcc-doc.html
 for %%f in (*.o *.def) do @del %%f
 
 :copy-install
-@if "%INST%"=="" set INST=%topdir%\tcc4tcl-pkg-0.40.0
+@if "%INST%"=="" set INST=%topdir%\tcc4tcl-0.40.0
 echo copy files to %INST%
 if not exist %INST% mkdir %INST%
 @if "%BIN%"=="" set BIN=%INST%
@@ -236,8 +238,8 @@ for %%f in (examples libtcc doc) do xcopy /s/i/q/y %win32%\%%f\ %INST%\%%f\
 echo copying %topdir%\include %INST%\include
 if not exist %INST%\include mkdir %INST%\include
 xcopy /s/i/q/y %topdir%\include %INST%\include
-echo deleting surplus files
-del %INST%\include\*.*
+rem echo deleting surplus files
+rem del %INST%\include\*.*
 
 set INSTWIN32=%INST%\include
 if "%HAS_WIN32_DIR%"=="yes" set INSTWIN32=%INST%\win32
