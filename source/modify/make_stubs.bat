@@ -42,13 +42,13 @@ if exist %XTCC64% (
     call :make_stubs32
     set CC64=%XTCC64%
     set AR64=%XTCC64% -ar 
-    call :make_stubs64
+    rem call :make_stubs64
 ) else (
     if exist %XTCC32% (
         set NATIVE=64
         set CC32=%XTCC32%
         set AR32=%XTCC32% -ar 
-        call :make_stubs32
+        rem call :make_stubs32
         set TCC64=%ACTDIR%/tcc.exe
         set CC64=%TCC64%
         set AR64=%TCC64% -ar 

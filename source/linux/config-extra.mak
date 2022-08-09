@@ -1,3 +1,6 @@
+libtclstub86.a:
+	./make_stubs.sh $(CC)
+
 libtcc4tcl.o: tcc.h libtcc.h config.h
 	. ./conf_tcc4tcl.sh; \
 	$(CC) $(CPPFLAGS) $${TCC4TCL_CFLAGS} -DHAVE_TCL_H -DLIBTCC_AS_DLL -o libtcc4tcl.o -c tcc.c 
@@ -6,7 +9,7 @@ tcc4tcl.o: tcc4tcl/tcc4tcl.c tcc.h libtcc.h config.h
 	. ./conf_tcc4tcl.sh; \
 	$(CC) $(CPPFLAGS) $${TCC4TCL_CFLAGS} -DHAVE_TCL_H -DLIBTCC_AS_DLL -I.  -o tcc4tcl.o -c tcc4tcl/tcc4tcl.c
 
-tcc4tcl: tcc4tcl.o libtcc4tcl.o
+tcc4tcl: tcc4tcl.o libtcc4tcl.o libtclstub86.a
 	. ./conf_tcc4tcl.sh; \
 	$(CC) -shared -s -o tcc4tcl.so tcc4tcl.o libtcc4tcl.o $${TCC4TCL_LIBS}
 	
