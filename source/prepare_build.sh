@@ -33,3 +33,9 @@ cp -r ./include/* $tccdir/include/
 #cp -r ./win32include/* $tccdir/win32/include/
 
 #cp $tccdir/include/* $tccdir/include/stdinc
+if ! test -e ${tccdir}/win32/include/winapi/winsock2.h ; then
+    echo "Copying missing winsock2 headers"
+    cp ./win32winsock/* ${tccdir}/win32/include/winapi/
+fi
+
+
