@@ -31,7 +31,12 @@ call ..\mod_tcc.tcl
 
 xcopy /s/i/q/y .\linux\* %tccdir%
 xcopy /s/i/q/y .\include\* %tccdir%\include\
-rem xcopy /s/i/q/y .\win32include\* %tccdir%\win32\include\
 
-copy %tccdir%\include\* %tccdir%\include\stdinc
+if not exist %tccdir%\win32\include\winapi\winsock2.h (
+    echo "Copying missing winsock2 headers"
+    xcopy /s/i/q/y .\win32winsock\* %tccdir%\win32\include\winapi\
+)
+
+mkdir %tccdir%\include\stdinc
+copy %tccdir%\include\* %tccdir%\include\stdinc\
 

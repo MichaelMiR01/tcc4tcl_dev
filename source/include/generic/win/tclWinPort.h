@@ -47,7 +47,7 @@ typedef DWORD_PTR * PDWORD_PTR;
  */
 #define INCL_WINSOCK_API_TYPEDEFS   1
 #include <winsock2.h>
-//#include <ws2tcpip.h>
+#include <ws2tcpip.h>
 #ifdef HAVE_WSPIAPI_H
 #   include <wspiapi.h>
 #endif
