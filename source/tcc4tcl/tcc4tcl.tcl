@@ -507,6 +507,7 @@ namespace eval tcc4tcl {
         switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
             "Linux-*" {
                 #puts "Linux"
+                # could use ::tcl::pkgconfig in future versions
                 $handle add_include_path  "${dir}/include/"
                 if {[string first mob $::TCC_VERSION]>-1} {
                     # ok temporary patch to have mob includes next to stdinc

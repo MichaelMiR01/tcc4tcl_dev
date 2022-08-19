@@ -90,27 +90,3 @@ Modifications to tcc sources
       tcc_free(s1);
 --- 854,860 ----
 ```
-
-A word on tclstubs // tkstubs
-
-The tcl stubs libraries are simply compiled archives. They get compiled from 
-
-```
-        libtclstub86.a tclStubLib.o tclOOStubLib.o tclTomMathStubLib.o
-                
-        libtkstub86.a tkStubLib.o ttkStubLib.o
-        
-```
-
-from the corresponding .c sources.
-
-But I found, that tcc is a bit picky with it's own libraries. So a stub compile from tcc-win will fail if linked from tcc-lin, when used under the same architecture.
-
-Actually, if you want to run both tcc4tcl side by side, they will have to use seperated stubs. In my case, I run tcc-linux 64bit and tcc-win32, so the stubs are separated into tclstub86elf.a (compiled 32bit under windows) and tclstubs86_64.a (compiled under linux 64bit). GCC needs it's own stubs.
-
-So, if in doubt, recompile the stubs manually from source, all necessary source are included in tcc4tcl packages, under linux you can additionally install tcl-dev and use the source from there.
-
-
-
-
-
