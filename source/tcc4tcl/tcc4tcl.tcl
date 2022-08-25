@@ -170,6 +170,13 @@ namespace eval tcc4tcl {
 		lappend state(procdefs) $name [list $tclname $rtype $adefs]
 	}
 
+	proc _tclwrap {handle name adefs rtype} {
+		upvar #0 $handle state
+		set code [tcc4tcl::tclwrap $name $adefs $rtype]
+		append state(code) $code "\n"
+	}
+
+
 	proc _cproc {handle name adefs rtype {body "#"}} {
 		upvar #0 $handle state
 
@@ -520,13 +527,13 @@ namespace eval tcc4tcl {
             set wrapped [lindex $wrap 0]
             set wrapper [lindex $wrap 1]
             set tclname [lindex $wrap 2]
-
+            set module_init ""
             if {$astate!=""} {
                 upvar $astate state
                 lappend state(procs) $name [list $tclname]
+                set module_init "$wrapped \n$wrapper \n"
             }
 
-            set module_init "$wrapped \n$wrapper \n"
             return "$module_head\n$module_init\n"
 	    }
 	    
@@ -875,7 +882,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	set wname tcl_[tcc4tcl::cleanname $name]
 
 	# Fully qualified proc name
-	set name [lookupNamespace $name]
+	# set name [lookupNamespace $name]
 
 	array set types {}
 	set varnames {}
@@ -909,8 +916,14 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 		ok      {
 			set rtype2 "int"
 		}
+		float    {
+		    set rtype2 "double"
+		}
 		string - dstring - vstring {
 			set rtype2 "char*"
+		}
+		""      {
+		    set rtype2 "void"
 		}
 		default {
 			set rtype2 $rtype
@@ -987,14 +1000,26 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
         # nameing convention:
         # mod_[string totitle $moduleName]_interp
         append cbody "    Tcl_Interp* ip = mod_[string totitle $moduleName]_interp;\n"
+        append cbody "    if (ip==NULL) Tcl_Panic(\"No interp found to call tcl routine!\");\n"
     }
 	append cbody "    char buf \[2048\];\n"
-    append cbody "    sprintf(buf,\"$fmtstr\",\"$name\"$varstr);\n"
-	append cbody "    Tcl_Eval (ip, buf);\n"
-	append cbody "\n"
+    append cbody "    sprintf (buf, \"$fmtstr\", \"$name\"$varstr);\n"
+	append cbody "    int rs = Tcl_Eval (ip, buf);\n"
+	# check eval for erros and try reporting
+    append cbody "    if(rs !=TCL_OK) {\n"
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        sprintf (buf, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	append cbody "    \n\n"
 
 	# Call wrapped function
-	if {$rtype != "void"} {
+	if {$rtype2 != "void"} {
 		append cbody "    $rtype2 rv;\n"
 	}
 
@@ -1012,18 +1037,28 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	#   default   (Tcl_Obj*)
 	#   Tcl_WideInt
 
-	switch -- $rtype {
+	switch -- $rtype2 {
 		void           { append cbody "    return; \n" }
-		int            { append cbody "    rv=Tcl_GetIntFromObj(Tcl_GetObjResult(ip));" "\n" }
-		long           { append cbody "    rv=Tcl_GetLongFromObj(Tcl_GetObjResult(ip));" "\n" }
-		Tcl_WideInt    { append cbody "    rv=Tcl_GetWideIntFromObj(Tcl_GetObjResult(ip));" "\n" }
+		int            { append cbody "    rs=Tcl_GetIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		long           { append cbody "    rs=Tcl_GetLongFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		Tcl_WideInt    { append cbody "    rs=Tcl_GetWideIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
 		float          -
-		double         { append cbody "    rv=Tcl_GetDoubleFromObj(Tcl_GetObjResult(ip));" "\n" }
+		double         { append cbody "    rs=Tcl_GetDoubleFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
 		char*          { append cbody "    rv=Tcl_GetStringFromObj(Tcl_GetObjResult(ip),NULL);" "\n" }
 		default        { append cbody "    rv=NULL;\n" }
 	}
-
-	if {$rtype != "void"} {
+	# check result for erros and try reporting
+    append cbody "    if(rs !=TCL_OK) {\n"
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        sprintf (buf, \"puts {error in result of tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	if {$rtype2 != "void"} {
 		append cbody "    return rv;\n"
 	}
 
