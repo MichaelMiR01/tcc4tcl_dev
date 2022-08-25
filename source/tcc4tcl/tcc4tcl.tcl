@@ -4,6 +4,7 @@ namespace eval tcc4tcl {
 	variable dir 
 	variable count
 	variable loadedfrom
+	variable moduleName "intern"
 	set dir [file dirname [info script]]
 	#puts "TCC DIR IS $dir"
 	if {[info command ::tcc4tcl] == ""} {
@@ -47,9 +48,9 @@ namespace eval tcc4tcl {
 	proc new {{output ""} {pkgName ""}} {
 		variable dir
 		variable count
-
+		variable moduleName
+		
 		set handle ::tcc4tcl::tcc_[incr count]
-
 		if {$output == ""} {
 			set type "memory"
 		} else {
@@ -57,6 +58,7 @@ namespace eval tcc4tcl {
 				set type "exe"
 			} else {
 				set type "package"
+				set moduleName $pkgName
 			}
 		}
 
@@ -496,11 +498,44 @@ namespace eval tcc4tcl {
 
 	proc _go {handle {outputOnly 0}} {
 		variable dir
+		variable moduleName
+		
+	    proc initModInterp {moduleName astate} {
+            # init module wide interp to use in external callbacks
+            #set module_init "int loot_interp (Tcl_Interp* interp) {\n"
+            set module_init ""
+            append module_init  "   mod_[string totitle $moduleName]_interp = interp;\n"
+            append module_init  "    return 1;\n"
+            #append module_init  "}\n";
+            append module_head "/* All TCL needs an interp... */\n"
+            append module_head "/* External callbacks won't know about an Tcl_Interp, so ...*/\n"
+            append module_head "/* we install a module scope global interp here ...*/\n"
+            append module_head "static Tcl_Interp*  mod_[string totitle $moduleName]_interp;\n"
+    
+            set name "loot_interp"
+            set adefs {Tcl_Interp* interp}
+            set rtype int
+            set body $module_init
+            set wrap [uplevel 0 [list ::tcc4tcl::wrap $name $adefs $rtype $body]]
+            set wrapped [lindex $wrap 0]
+            set wrapper [lindex $wrap 1]
+            set tclname [lindex $wrap 2]
 
+            if {$astate!=""} {
+                upvar $astate state
+                lappend state(procs) $name [list $tclname]
+            }
+
+            set module_init "$wrapped \n$wrapper \n"
+            return "$module_head\n$module_init\n"
+	    }
+	    
 		upvar #0 $handle state
 
 		set code ""
-
+		set module_head ""
+		set module_init ""
+		
 		variable hasTK 0
 
         #puts "Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
@@ -590,8 +625,7 @@ namespace eval tcc4tcl {
 			 }
 			 set code "#define USE_TK_STUBS 1\n#include <tk.h>\n$compiletkstubs\n$code"
 		}
-		set code "#include <tcl.h>\n$code"
-		
+		set modInitCode ""
 		# Append additional generated code to support the output type
 		#puts "Type is $state(type)";
 		switch -- $state(type) {
@@ -626,12 +660,15 @@ namespace eval tcc4tcl {
 
 						append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
 					}
-
+					
+					append code "  mod_[string totitle $moduleName]_interp = interp;\n"
 					append code "\}"
 				}
 			}
 			"package" {
 				set packageName [lindex $state(package) 0]
+				set moduleName $packageName
+				set modInitCode [initModInterp $moduleName ""]
 				set packageVersion [lindex $state(package) 1]
 				set tclversion [lindex $state(package) 2]
 				if {$tclversion eq ""} {
@@ -673,11 +710,19 @@ namespace eval tcc4tcl {
 				}
 
 				append code "  Tcl_PkgProvide(interp, \"$packageName\", \"$packageVersion\");\n"
+				append code "  mod_[string totitle $moduleName]_interp = interp;\n"
 				append code "  return(TCL_OK);\n"
 				append code "\}"
 			}
 		}
-
+		
+		if {$modInitCode eq ""} {
+		    set modInitCode [initModInterp $moduleName {*}state]
+		}
+		
+        #add header late
+        set code "#include <tcl.h>\n$modInitCode\n\n$code"
+        
 		if {$outputOnly} {
 			return $code
 		}
@@ -731,7 +776,6 @@ namespace eval tcc4tcl {
                 }
                 if {[info exists state(procs)] && [llength $state(procs)] > 0} {
                     foreach {procname cname_obj} $state(procs) {
-                        #puts "tcc command $procname {*}$cname_obj"
                         tcc command $procname {*}$cname_obj
                     }
                 }
@@ -798,6 +842,7 @@ namespace eval tcc4tcl {
 		    puts "Starting TK"
             tkstart
         }
+        loot_interp
 		# Cleanup
 		rename $handle ""
 		unset $handle
@@ -807,6 +852,185 @@ namespace eval tcc4tcl {
 
 proc ::tcc4tcl::checkname {n} {expr {[regexp {^[a-zA-Z0-9_]+$} $n] > 0}}
 proc ::tcc4tcl::cleanname {n} {regsub -all {[^a-zA-Z0-9_]+} $n _}
+
+# takes a tclproc definition
+# and constrcuts the tcl_eval code from it
+# usage
+# tcc4tcl::tclwrap name {adefs {int i float f ...}} {rtype void} 
+#
+# the resulting code has the form
+# $rtype tcl_$name (Tcl_interp* ip, $adefs) {...}
+#
+# and can be used to call into tcl_procs directly from c
+#
+# but... you need a valid interp to do that!
+
+proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
+    variable moduleName
+    set hasInterp 0
+	if {$name == ""} {
+		return "No TCL Proc name given"
+	}
+
+	set wname tcl_[tcc4tcl::cleanname $name]
+
+	# Fully qualified proc name
+	set name [lookupNamespace $name]
+
+	array set types {}
+	set varnames {}
+	set cargs {}
+	set cnames {}  
+	set cbody {}
+	set code {}
+
+	# if first arg is "Tcl_Interp*", pass it without counting it as a cmd arg
+	while {1} {
+		if {[lindex $adefs 0] eq "Tcl_Interp*"} {
+			lappend cnames ip
+			lappend cargs [lrange $adefs 0 1]
+			set adefs [lrange $adefs 2 end]
+			set hasInterp 1;# else we have to find a module wide instance
+			continue
+		}
+
+		break
+	}
+
+	foreach {t n} $adefs {
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
+	}
+
+	# Handle return type
+	switch -- $rtype {
+		ok      {
+			set rtype2 "int"
+		}
+		string - dstring - vstring {
+			set rtype2 "char*"
+		}
+		default {
+			set rtype2 $rtype
+		}
+	}
+
+	# Write wrapper
+	if {$hasInterp} {
+	    # the function get it's own interp from caller
+        append cbody "$rtype2 $wname\(Tcl_Interp *ip, "
+    } else {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_[string totitle $moduleName]_interp
+        append cbody "$rtype2 $wname\("
+    }
+
+	# Create wrapped function
+	if {[llength $cargs] != 0} {
+		set cargs_str [join $cargs {, }]
+	} else {
+		set cargs_str "void"
+	}
+    append cbody "$cargs_str"
+	append cbody ") {" "\n"
+
+    set cname [namespace tail $name]
+
+	# Create wrapper function
+	## Supported input types
+	##   Tcl_Interp*
+	##   ClientData
+	##   int
+	##   long
+	##   float
+	##   double
+	##   char*
+	##   Tcl_Obj*
+	##   void*
+	##   Tcl_WideInt
+
+	set n 0
+	set fmtstr "%s"
+	set varstr ""
+	foreach x $varnames {
+		incr n
+		switch -- $types($x) {
+			int {
+				append fmtstr " %d"
+			}
+			long {
+				append fmtstr " %d"
+			}
+			Tcl_WideInt {
+				append fmtstr " %d"
+			}
+			float {
+				append fmtstr " %f"
+			}
+			double {
+				append fmtstr " %f"
+			}
+			char* {
+				append fmtstr " \\\"%s\\\""
+			}
+			default {
+				append fmtstr " \\\"%s\\\""
+			}
+		}
+		append varstr ",$x"
+	}
+	if {!$hasInterp} {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_[string totitle $moduleName]_interp
+        append cbody "    Tcl_Interp* ip = mod_[string totitle $moduleName]_interp;\n"
+    }
+	append cbody "    char buf \[2048\];\n"
+    append cbody "    sprintf(buf,\"$fmtstr\",\"$name\"$varstr);\n"
+	append cbody "    Tcl_Eval (ip, buf);\n"
+	append cbody "\n"
+
+	# Call wrapped function
+	if {$rtype != "void"} {
+		append cbody "    $rtype2 rv;\n"
+	}
+
+	# Return types supported by critcl
+	#   void
+	#   ok
+	#   int
+	#   long
+	#   float
+	#   double
+	#   char*     (TCL_STATIC char*)
+	#   string    (TCL_DYNAMIC char*)
+	#   dstring   (TCL_DYNAMIC char*)
+	#   vstring   (TCL_VOLATILE char*)
+	#   default   (Tcl_Obj*)
+	#   Tcl_WideInt
+
+	switch -- $rtype {
+		void           { append cbody "    return; \n" }
+		int            { append cbody "    rv=Tcl_GetIntFromObj(Tcl_GetObjResult(ip));" "\n" }
+		long           { append cbody "    rv=Tcl_GetLongFromObj(Tcl_GetObjResult(ip));" "\n" }
+		Tcl_WideInt    { append cbody "    rv=Tcl_GetWideIntFromObj(Tcl_GetObjResult(ip));" "\n" }
+		float          -
+		double         { append cbody "    rv=Tcl_GetDoubleFromObj(Tcl_GetObjResult(ip));" "\n" }
+		char*          { append cbody "    rv=Tcl_GetStringFromObj(Tcl_GetObjResult(ip),NULL);" "\n" }
+		default        { append cbody "    rv=NULL;\n" }
+	}
+
+	if {$rtype != "void"} {
+		append cbody "    return rv;\n"
+	}
+
+	append cbody "}" "\n"
+
+	return $cbody
+}
 
 proc ::tcc4tcl::cproc {name adefs rtype {body "#"}} {
 	set handle [::tcc4tcl::new]
