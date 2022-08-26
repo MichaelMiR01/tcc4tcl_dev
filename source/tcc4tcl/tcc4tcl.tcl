@@ -518,6 +518,7 @@ namespace eval tcc4tcl {
             append module_head "/* External callbacks won't know about an Tcl_Interp, so ...*/\n"
             append module_head "/* we install a module scope global interp here ...*/\n"
             append module_head "static Tcl_Interp*  mod_[string totitle $moduleName]_interp;\n"
+            append module_head "static int _tcl_last_errorCode;\n"
     
             set name "loot_interp"
             set adefs {Tcl_Interp* interp}
@@ -1002,14 +1003,17 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
         append cbody "    Tcl_Interp* ip = mod_[string totitle $moduleName]_interp;\n"
         append cbody "    if (ip==NULL) Tcl_Panic(\"No interp found to call tcl routine!\");\n"
     }
+    append cbody "    _tcl_last_errorCode=0;\n"
 	append cbody "    char buf \[2048\];\n"
     append cbody "    sprintf (buf, \"$fmtstr\", \"$name\"$varstr);\n"
 	append cbody "    int rs = Tcl_Eval (ip, buf);\n"
 	# check eval for erros and try reporting
     append cbody "    if(rs !=TCL_OK) {\n"
+    append cbody "        _tcl_last_errorCode=rs;\n"
     append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
     append cbody "        sprintf (buf, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
     append cbody "        Tcl_Eval (ip, buf);\n"
+    append cbody "         Tcl_Eval(ip, \"puts {STACK TRACE:}; puts \$errorInfo; flush stdout;\");\n"
     if {$rtype2!="void"} {
         append cbody "        return ($rtype2) NULL ;\n"
     } else {
@@ -1049,6 +1053,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	}
 	# check result for erros and try reporting
     append cbody "    if(rs !=TCL_OK) {\n"
+    append cbody "        _tcl_last_errorCode=rs;\n"
     append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
     append cbody "        sprintf (buf, \"puts {error in result of tcl-proc $name\\n%s}\",err);\n"
     append cbody "        Tcl_Eval (ip, buf);\n"
