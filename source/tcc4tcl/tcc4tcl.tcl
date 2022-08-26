@@ -5,6 +5,7 @@ namespace eval tcc4tcl {
 	variable count
 	variable loadedfrom
 	variable moduleName "intern"
+	variable needInterp 0
 	set dir [file dirname [info script]]
 	#puts "TCC DIR IS $dir"
 	if {[info command ::tcc4tcl] == ""} {
@@ -49,6 +50,9 @@ namespace eval tcc4tcl {
 		variable dir
 		variable count
 		variable moduleName
+
+		variable needInterp
+		set needInterp 0
 		
 		set handle ::tcc4tcl::tcc_[incr count]
 		if {$output == ""} {
@@ -506,19 +510,23 @@ namespace eval tcc4tcl {
 	proc _go {handle {outputOnly 0}} {
 		variable dir
 		variable moduleName
+		variable needInterp
 		
 	    proc initModInterp {moduleName astate} {
             # init module wide interp to use in external callbacks
-            #set module_init "int loot_interp (Tcl_Interp* interp) {\n"
+            # set module_init "int loot_interp (Tcl_Interp* interp) {\n"
+            # this code will only be used, if needInterp is set to 1
+            # wether manually after creation or from tcc4tcl::tclwrap
+            
             set module_init ""
-            append module_init  "   mod_[string totitle $moduleName]_interp = interp;\n"
+            append module_init  "   mod_Tcl_interp = interp;\n"
             append module_init  "    return 1;\n"
             #append module_init  "}\n";
             append module_head "/* All TCL needs an interp... */\n"
             append module_head "/* External callbacks won't know about an Tcl_Interp, so ...*/\n"
             append module_head "/* we install a module scope global interp here ...*/\n"
-            append module_head "static Tcl_Interp*  mod_[string totitle $moduleName]_interp;\n"
-            append module_head "static int _tcl_last_errorCode;\n"
+            append module_head "static Tcl_Interp*  mod_Tcl_interp;\n"
+            append module_head "static int mod_Tcl_errorCode;\n"
     
             set name "loot_interp"
             set adefs {Tcl_Interp* interp}
@@ -669,7 +677,9 @@ namespace eval tcc4tcl {
 						append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
 					}
 					
-					append code "  mod_[string totitle $moduleName]_interp = interp;\n"
+                    if {$needInterp!=0} {
+                        append code "  mod_Tcl_interp = interp;\n"
+                    }
 					append code "\}"
 				}
 			}
@@ -718,13 +728,15 @@ namespace eval tcc4tcl {
 				}
 
 				append code "  Tcl_PkgProvide(interp, \"$packageName\", \"$packageVersion\");\n"
-				append code "  mod_[string totitle $moduleName]_interp = interp;\n"
+				if {$needInterp!=0} {
+                    append code "  mod_Tcl_interp = interp;\n"
+                }
 				append code "  return(TCL_OK);\n"
 				append code "\}"
 			}
 		}
 		
-		if {$modInitCode eq ""} {
+		if {($modInitCode eq "")&&($needInterp!=0)} {
 		    set modInitCode [initModInterp $moduleName {*}state]
 		}
 		
@@ -850,7 +862,9 @@ namespace eval tcc4tcl {
 		    puts "Starting TK"
             tkstart
         }
-        loot_interp
+        if {$needInterp!=0} {
+            loot_interp
+        }
 		# Cleanup
 		rename $handle ""
 		unset $handle
@@ -875,6 +889,7 @@ proc ::tcc4tcl::cleanname {n} {regsub -all {[^a-zA-Z0-9_]+} $n _}
 
 proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
     variable moduleName
+    variable needInterp
     set hasInterp 0
 	if {$name == ""} {
 		return "No TCL Proc name given"
@@ -934,13 +949,14 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	# Write wrapper
 	if {$hasInterp} {
 	    # the function get it's own interp from caller
-        append cbody "$rtype2 $wname\(Tcl_Interp *ip, "
+#        append cbody "$rtype2 $wname\(Tcl_Interp *ip, "
     } else {
         # no interp in context, try finding a module wide instance
         # nameing convention:
-        # mod_[string totitle $moduleName]_interp
-        append cbody "$rtype2 $wname\("
+        # mod_Tcl_interp
+        set needInterp 1
     }
+    append cbody "$rtype2 $wname\("
 
 	# Create wrapped function
 	if {[llength $cargs] != 0} {
@@ -999,17 +1015,20 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	if {!$hasInterp} {
         # no interp in context, try finding a module wide instance
         # nameing convention:
-        # mod_[string totitle $moduleName]_interp
-        append cbody "    Tcl_Interp* ip = mod_[string totitle $moduleName]_interp;\n"
+        # mod_Tcl_interp
+        set needInterp 1
+        append cbody "    Tcl_Interp* ip = mod_Tcl_interp;\n"
         append cbody "    if (ip==NULL) Tcl_Panic(\"No interp found to call tcl routine!\");\n"
+        append cbody "    mod_Tcl_errorCode=0;\n"
     }
-    append cbody "    _tcl_last_errorCode=0;\n"
 	append cbody "    char buf \[2048\];\n"
     append cbody "    sprintf (buf, \"$fmtstr\", \"$name\"$varstr);\n"
 	append cbody "    int rs = Tcl_Eval (ip, buf);\n"
 	# check eval for erros and try reporting
     append cbody "    if(rs !=TCL_OK) {\n"
-    append cbody "        _tcl_last_errorCode=rs;\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
     append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
     append cbody "        sprintf (buf, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
     append cbody "        Tcl_Eval (ip, buf);\n"
@@ -1053,7 +1072,9 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	}
 	# check result for erros and try reporting
     append cbody "    if(rs !=TCL_OK) {\n"
-    append cbody "        _tcl_last_errorCode=rs;\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
     append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
     append cbody "        sprintf (buf, \"puts {error in result of tcl-proc $name\\n%s}\",err);\n"
     append cbody "        Tcl_Eval (ip, buf);\n"
