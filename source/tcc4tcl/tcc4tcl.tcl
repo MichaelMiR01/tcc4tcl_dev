@@ -873,14 +873,18 @@ proc ::tcc4tcl::cleanname {n} {regsub -all {[^a-zA-Z0-9_]+} $n _}
 # takes a tclproc definition
 # and constrcuts the tcl_eval code from it
 # usage
-# tcc4tcl::tclwrap name {adefs {int i float f ...}} {rtype void} 
+# tcc4tcl::tclwrap name {adefs {(Tcl_interp* ip,) int i float f ...}} {rtype void} 
 #
 # the resulting code has the form
-# $rtype tcl_$name (Tcl_interp* ip, $adefs) {...}
+# $rtype tcl_$name ( $adefs) {...}
 #
 # and can be used to call into tcl_procs directly from c
 #
-# but... you need a valid interp to do that!
+# if (Tcl_interp* ip,) is ommitted
+# tcc4tcl will emit some code to get an interp into module scope
+# static Tcl_Interp* mod_Tcl_Interp;
+#
+# Initialisation is done in the initialisation routine
 
 proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
     variable needInterp
