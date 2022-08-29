@@ -983,6 +983,241 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	set n 0
 	set fmtstr "%s"
 	set varstr ""
+	set cobjstring "    Tcl_Obj*  argObjvArray \[[expr [llength $varnames]+1]\];\n\n"
+    append cobjstring "    Tcl_Obj* funcname = Tcl_NewStringObj(\"$name\",-1);\n"
+    append cobjstring "    Tcl_IncrRefCount(funcname);\n"
+    append cobjstring "    argObjvArray\[$n\] = funcname;\n\n"
+	
+	foreach x $varnames {
+        incr n
+		switch -- $types($x) {
+			int {
+				append fmtstr " %d"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
+				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+			}
+			long {
+				append fmtstr " %d"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
+				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+			}
+			Tcl_WideInt {
+				append fmtstr " %d"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
+				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+			}
+			float {
+				append fmtstr " %f"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewDoubleObj((double) $x);\n"
+				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+			}
+			double {
+				append fmtstr " %f"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewDoubleObj((double) $x);\n"
+				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+			}
+			char* {
+				append fmtstr " \\\"%s\\\""
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewStringObj($x, -1);\n"
+				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+				
+			}
+			default {
+				append fmtstr " \\\"%s\\\""
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewStringObj($x,-1);\n"
+				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+			}
+		}
+		append cobjstring "    \n"
+		append varstr ",$x"
+	}
+	incr n
+	if {!$hasInterp} {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_Tcl_interp
+        set needInterp 1
+        append cbody "    Tcl_Interp* ip = mod_Tcl_interp;\n"
+        append cbody "    if (ip==NULL) Tcl_Panic(\"No interp found to call tcl routine!\");\n"
+        append cbody "    mod_Tcl_errorCode=0;\n"
+    }
+	append cbody "    char buf \[2048\];\n"
+	append cbody $cobjstring
+    #append cbody "    sprintf (buf, \"$fmtstr\", \"$name\"$varstr);\n"
+	append cbody "    int rs = Tcl_EvalObjv(ip, $n, argObjvArray, 0);\n"
+	# check eval for erros and try reporting
+    append cbody "    if(rs !=TCL_OK) {\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        snprintf (buf, 2048, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    append cbody "        Tcl_Eval (ip, \"puts {STACK TRACE:}; puts \$errorInfo; flush stdout;\");\n"
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	append cbody "    \n\n"
+
+	# Call wrapped function
+	if {$rtype2 != "void"} {
+		append cbody "    $rtype2 rv;\n"
+	}
+
+	# Return types supported by critcl
+	#   void
+	#   ok
+	#   int
+	#   long
+	#   float
+	#   double
+	#   char*     (TCL_STATIC char*)
+	#   string    (TCL_DYNAMIC char*)
+	#   dstring   (TCL_DYNAMIC char*)
+	#   vstring   (TCL_VOLATILE char*)
+	#   default   (Tcl_Obj*)
+	#   Tcl_WideInt
+
+	switch -- $rtype2 {
+		void           { append cbody "    return; \n" }
+		int            { append cbody "    rs=Tcl_GetIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		long           { append cbody "    rs=Tcl_GetLongFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		Tcl_WideInt    { append cbody "    rs=Tcl_GetWideIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		float          -
+		double         { append cbody "    rs=Tcl_GetDoubleFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		char*          { append cbody "    rv=Tcl_GetStringFromObj(Tcl_GetObjResult(ip),NULL);" "\n" }
+		default        { append cbody "    rv=NULL;\n" }
+	}
+	# check result for erros and try reporting
+    append cbody "    if(rs !=TCL_OK) {\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        sprintf (buf, \"puts {error in result of tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	if {$rtype2 != "void"} {
+		append cbody "    return rv;\n"
+	}
+
+	append cbody "}" "\n"
+
+	return $cbody
+}
+
+proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void}} {
+    variable needInterp
+    set hasInterp 0
+	if {$name == ""} {
+		return "No TCL Proc name given"
+	}
+
+	set wname tcl_[tcc4tcl::cleanname $name]
+
+	# Fully qualified proc name
+	# set name [lookupNamespace $name]
+
+	array set types {}
+	set varnames {}
+	set cargs {}
+	set cnames {}  
+	set cbody {}
+	set code {}
+
+	# if first arg is "Tcl_Interp*", pass it without counting it as a cmd arg
+	while {1} {
+		if {[lindex $adefs 0] eq "Tcl_Interp*"} {
+			lappend cnames ip
+			lappend cargs [lrange $adefs 0 1]
+			set adefs [lrange $adefs 2 end]
+			set hasInterp 1;# else we have to find a module wide instance
+			continue
+		}
+
+		break
+	}
+
+	foreach {t n} $adefs {
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
+	}
+
+	# Handle return type
+	switch -- $rtype {
+		ok      {
+			set rtype2 "int"
+		}
+		float    {
+		    set rtype2 "double"
+		}
+		string - dstring - vstring {
+			set rtype2 "char*"
+		}
+		""      {
+		    set rtype2 "void"
+		}
+		default {
+			set rtype2 $rtype
+		}
+	}
+
+	# Write wrapper
+	if {$hasInterp} {
+	    # the function get it's own interp from caller
+#        append cbody "$rtype2 $wname\(Tcl_Interp *ip, "
+    } else {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_Tcl_interp
+        set needInterp 1
+    }
+    append cbody "$rtype2 $wname\("
+
+	# Create wrapped function
+	if {[llength $cargs] != 0} {
+		set cargs_str [join $cargs {, }]
+	} else {
+		set cargs_str "void"
+	}
+    append cbody "$cargs_str"
+	append cbody ") {" "\n"
+
+    set cname [namespace tail $name]
+
+	# Create wrapper function
+	## Supported input types
+	##   Tcl_Interp*
+	##   ClientData
+	##   int
+	##   long
+	##   float
+	##   double
+	##   char*
+	##   Tcl_Obj*
+	##   void*
+	##   Tcl_WideInt
+
+	set n 0
+	set fmtstr "%s"
+	set varstr ""
 	foreach x $varnames {
 		incr n
 		switch -- $types($x) {
@@ -1020,7 +1255,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
         append cbody "    mod_Tcl_errorCode=0;\n"
     }
 	append cbody "    char buf \[2048\];\n"
-    append cbody "    sprintf (buf, \"$fmtstr\", \"$name\"$varstr);\n"
+    append cbody "    snprintf (buf, 2048, \"$fmtstr\", \"$name\"$varstr);\n"
 	append cbody "    int rs = Tcl_Eval (ip, buf);\n"
 	# check eval for erros and try reporting
     append cbody "    if(rs !=TCL_OK) {\n"
@@ -1028,7 +1263,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
         append cbody "        mod_Tcl_errorCode=rs;\n"
     }
     append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
-    append cbody "        sprintf (buf, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        snprintf (buf, 2048, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
     append cbody "        Tcl_Eval (ip, buf);\n"
     append cbody "         Tcl_Eval(ip, \"puts {STACK TRACE:}; puts \$errorInfo; flush stdout;\");\n"
     if {$rtype2!="void"} {
@@ -1303,4 +1538,5 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 
 namespace eval tcc4tcl {namespace export cproc}
 package provide tcc4tcl "0.41"
+
 
