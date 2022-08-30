@@ -1,0 +1,1549 @@
+# tcc.tcl - library routines for the tcc wrapper (Mark Janssen)
+# heavily modified by MiR to support TK properly and some debug features
+namespace eval tcc4tcl {
+	variable dir 
+	variable count
+	variable loadedfrom
+	variable needInterp 0
+	set dir [file dirname [info script]]
+	#puts "TCC DIR IS $dir"
+	if {[info command ::tcc4tcl] == ""} {
+		catch { 
+		    load {} tcc4tcl 
+		    set loadedfrom "static"
+		}
+	}
+	if {[info command ::tcc4tcl] == ""} {
+		catch {
+			load [file join $dir tcc4tcl[info sharedlibextension]] tcc4tcl
+		    set loadedfrom  "[file join $dir tcc4tcl[info sharedlibextension]]"
+		}
+	}
+	if {[info command ::tcc4tcl] == ""} {
+		catch {
+			load [file join ./ tcc4tcl[info sharedlibextension]] tcc4tcl
+		    set loadedfrom  "[file join ./ tcc4tcl[info sharedlibextension]]"
+		}
+	}
+
+	if {[info command ::tcc4tcl] == ""} {
+	    puts "ERROR: Failed loading tcc4tcl library"
+	    set loadedfrom "-failed-"
+	}
+	set count 0
+
+	proc lookupNamespace {name} {
+		if {![string match "::*" $name]} {
+			set nsfrom [uplevel 2 {namespace current}]    
+			if {$nsfrom eq "::"} {
+				set nsfrom ""
+			}
+
+			set name "${nsfrom}::${name}"
+		}
+
+		return $name
+	}
+
+	proc new {{output ""} {pkgName ""}} {
+		variable dir
+		variable count
+
+		variable needInterp
+		set needInterp 0
+		
+		set handle ::tcc4tcl::tcc_[incr count]
+		if {$output == ""} {
+			set type "memory"
+		} else {
+			if {$pkgName == ""} {
+				set type "exe"
+			} else {
+				set type "package"
+			}
+		}
+
+		array set $handle [list code "" type $type filename $output package $pkgName add_inc_path "" add_lib_path "" add_lib "" add_file "" add_macros "" add_symbol ""]
+
+		proc $handle {cmd args} [string map [list @@HANDLE@@ $handle] {
+			set handle {@@HANDLE@@}
+
+			if {$cmd == "go"} {
+				set args [list 0 {*}$args]
+			}
+
+			if {$cmd == "code"} {
+				set cmd "go"
+				set args [list 1 {*}$args]
+			}
+
+			set callcmd ::tcc4tcl::_$cmd
+
+			if {[info command $callcmd] == ""} {
+				return -code error "unknown or ambiguous subcommand \"$cmd\": must be cwrap, ccode, cproc, ccommand, tclwrap, delete, linktclcommand, code, tk, add_include_path, add_library_path, add_library, process_command_line, or go"
+			}
+
+			uplevel 1 [list $callcmd $handle {*}$args]
+		}]
+
+		return $handle
+	}
+
+	proc _linktclcommand {handle cSymbol args} {
+		upvar #0 $handle state
+		set argc [llength $args]
+		if {$argc != 1 && $argc != 2} {
+			return -code error "_linktclcommand handle cSymbol tclCommand ?clientData?"
+		}
+
+		lappend state(procs) $cSymbol $args
+	}
+
+	proc _ccommand {handle tclCommand argList body} {
+		upvar #0 $handle state
+
+		set tclCommand [lookupNamespace $tclCommand]
+
+		set cSymbol [cleanname [namespace tail $tclCommand]]
+
+		lappend state(procs) $tclCommand [list $cSymbol]
+
+		foreach {clientData interp objc objv} $argList {}
+		set cArgList "ClientData $clientData, Tcl_Interp *$interp, int $objc, Tcl_Obj *CONST $objv\[\]"
+
+		append state(code) "int $cSymbol\($cArgList) {\n$body\n}\n"
+
+		return
+	}
+
+	proc _add_include_path {handle args} {
+		upvar #0 $handle state
+
+		lappend state(add_inc_path) {*}$args
+	}
+	proc _drop_include_path {handle path} {
+		upvar #0 $handle state
+
+        # lremove RS oneliner from 
+        set ol $state(add_inc_path)
+        set ol [lsearch -all -inline -not -exact $ol $path]
+        set state(add_inc_path) $ol
+        #puts $ol
+	}
+
+	proc _add_library_path {handle args} {
+		upvar #0 $handle state
+
+		lappend state(add_lib_path) {*}$args
+	}
+
+	proc _add_library {handle args} {
+		upvar #0 $handle state
+
+		lappend state(add_lib) {*}$args
+	}
+
+	proc _add_file {handle args} {
+		upvar #0 $handle state
+
+		lappend state(add_file) {*}$args
+	}
+
+	proc _add_symbol {handle args} {
+		upvar #0 $handle state
+
+		lappend state(add_symbol) {*}$args
+	}
+	
+	proc _cwrap {handle name adefs rtype} {
+		upvar #0 $handle state
+
+		set wrap [uplevel 1 [list ::tcc4tcl::wrap $name $adefs $rtype "#" "" 1]]
+
+		set wrapped [lindex $wrap 0]
+		set wrapper [lindex $wrap 1]
+		set tclname [lindex $wrap 2]
+
+		append state(code) $wrapped "\n"
+		append state(code) $wrapper "\n"
+
+		lappend state(procs) $name [list $tclname]
+		lappend state(procdefs) $name [list $tclname $rtype $adefs]
+	}
+
+	proc _tclwrap {handle name {adefs {}} {rtype void} {cname ""}} {
+		upvar #0 $handle state
+		set code [tcc4tcl::tclwrap $name $adefs $rtype $cname]
+		append state(code) $code "\n"
+	}
+
+	proc _tclwrap_eval {handle name {adefs {}} {rtype void} {cname ""}} {
+		upvar #0 $handle state
+		set code [tcc4tcl::tclwrap_eval $name $adefs $rtype $cname]
+		append state(code) $code "\n"
+	}
+
+
+	proc _cproc {handle name adefs rtype {body "#"}} {
+		upvar #0 $handle state
+
+		set wrap [uplevel 1 [list ::tcc4tcl::wrap $name $adefs $rtype $body]]
+
+		set wrapped [lindex $wrap 0]
+		set wrapper [lindex $wrap 1]
+		set tclname [lindex $wrap 2]
+
+		append state(code) $wrapped "\n"
+		append state(code) $wrapper "\n"
+
+		lappend state(procs) $name [list $tclname]
+		lappend state(procdefs) $name [list $tclname $rtype $adefs] 
+	}
+
+	proc _ccode {handle code} {
+		upvar #0 $handle state
+
+		append state(code) $code "\n"
+	}
+
+	proc _tk {handle} {
+		upvar #0 $handle state
+
+		set state(tk) 1
+	}
+
+	proc _process_command_line {handle cmdStr} {
+		# XXX:TODO: This needs to handle shell-quoted arguments
+		upvar #0 $handle state
+		set cmdStr [regsub -all {   *} $cmdStr { }]
+		set work [split $cmdStr " "]
+
+		foreach cmd $work {
+			switch -glob -- $cmd {
+				"-I*" {
+					set dir [string range $cmd 2 end]
+					_add_include_path $handle $dir
+				}
+				"-D*" {
+					set symbolval [string range $cmd 2 end]
+					set symbolval [split $symbolval =]
+					set symbol [lindex $symbolval 0]
+					set val    [join [lrange $symbolval 1 end] =]
+
+					dict set state(add_macros) $symbol $val
+				}
+				"-U*" {
+					set symbol [string range $cmd 2 end]
+					dict unset state(add_macros) $symbol $val
+				}
+				"-l*" {
+					set library [string range $cmd 2 end]
+					_add_library $handle $library
+				}
+				"-L*" {
+					set libraryDir [string range $cmd 2 end]
+					_add_library_path $handle $libraryDir
+				}
+				"-g" {
+					# Ignored
+				}
+			}
+		}
+	}
+
+	proc _delete {handle} {
+		rename $handle ""
+		unset $handle
+	}
+
+	proc _proc {handle cname adefs rtype body args} {
+		# Convert body into a C-style string
+		binary scan $body H* cbody
+		set cbody [regsub -all {..} $cbody {\\x&}]
+
+		# Parse optional arguments
+		foreach {argname argval} $args {
+			switch -- $argname {
+				"-error" {
+					set returnErrorValue $argval
+				}
+			}
+		}
+
+		# Argument definitions (in C style) initialization
+		set adefs_c [list]
+
+		# Names of all arguments initialization
+		set args [list]
+
+		# Determine if one of the arguments is a Tcl_Interp*, if not
+		# then we will need to create our own Tcl interpreter for
+		# local use
+		set newInterp 1
+		foreach {type var} $adefs {
+			if {$type == "Tcl_Interp*"} {
+				set newInterp 0
+				set interp_name $var
+
+				break
+			}
+		}
+
+		# Create the C-style argument definition
+		## Create a list of all arguments
+		foreach {type var} $adefs {
+			# Update definition of types
+			lappend adefs_c [list $type $var]
+
+			# Note the type for this variable
+			set types($var) $type
+
+			# The Tcl interpreter is not added to the list of Tcl arguments
+			if {$type == "Tcl_Interp*"} {
+				continue
+			}
+
+			# Update the list of arguments to pass to Tcl
+			lappend args $var
+		}
+
+		## Convert that list into something we can use in a C prototype
+		if {[llength $adefs_c] == 0} {
+			set adefs_c "void"
+		} else {
+			set adefs_c [join $adefs_c {, }]
+		}
+
+		# Determine actual C return type:
+		switch -- $rtype {
+			"ok" {
+				set rtype_c "int"
+			}
+			default {
+				set rtype_c $rtype
+			}
+		}
+
+		# Determine how to return in failure
+		if {$rtype != "void"} {
+			if {[info exists returnErrorValue]} {
+				set return_failure "return(${returnErrorValue})"
+			} else {
+				switch -- $rtype {
+					int - long - Tcl_WideInt {
+						set return_failure "return(-1)"
+					}
+					ok {
+						set return_failure "return(TCL_ERROR)"
+					}
+					double - float {
+						set return_failure "return(($rtype) ((($rtype) 1.0) / (($rtype) 0.0)))"
+					}
+					default {
+						set return_failure "return(NULL)"
+					}
+				}
+			}
+		} else {
+			set return_failure "return"
+		}
+
+		# Define the C function
+		_ccode $handle "$rtype_c $cname\($adefs_c) \{"
+
+		## Define the Tcl return value checking variable
+		_ccode $handle "    int tclrv;"
+
+		## If the interpreters return value is relevant, create a variable to store it
+		if {$rtype != "ok" && $rtype != "void"} {
+			_ccode $handle "    Tcl_Obj *rv_interp;"
+		}
+
+		## If we are returning a value, declare a variable for that
+		if {$rtype != "void"} {
+			_ccode $handle "    $rtype_c rv;"
+		}
+
+		## If we need to create a new interpreter, do so
+		if {$newInterp} {
+			set interp_name "ip"
+			_ccode $handle "    Tcl_Interp *${interp_name};"
+		}
+
+		# Declare Tcl_Obj variables
+		_ccode $handle "    Tcl_Obj *_[join $args {, *_}];"
+
+		_ccode $handle ""
+
+		# Create a new interp if needed, otherwise create a temporary procedure
+		if {$newInterp} {
+			_ccode $handle "    ${interp_name}  = Tcl_CreateInterp();"
+			_ccode $handle "    if (!${interp_name}) $return_failure;"
+			_ccode $handle ""
+
+			set procname ""
+		} else {
+			set procname "::tcc4tcl::tmp::proc[clock clicks]"
+			set cbody "namespace eval ::tcc4tcl {}; namespace eval ::tcc4tcl::tmp {}; proc ${procname} {$args} { $cbody }"
+		}
+
+		# Process all arguments
+		foreach arg $args {
+			set type $types($arg)
+			switch -- $type {
+				int - long - Tcl_WideInt - float - double {
+					switch -- $type {
+						float {
+							set convCmd Double
+						}
+						Tcl_WideInt {
+							set convCmd WideInt
+						}
+						default {
+							set convCmd [string totitle $type]
+						}
+					}
+
+					_ccode $handle "    _$arg = Tcl_New${convCmd}Obj($arg);"
+					_ccode $handle "    if (!_$arg) $return_failure;"
+				}
+				char* {
+					if {[info exists types(${arg}_MemberCount)] && [info exists types(${arg}_MemberLength)]} {
+						_ccode $handle "    _$arg = Tcl_NewByteArrayObj($arg, ${arg}_MemberCount * ${arg}_MemberLength);"
+					} elseif {[info exists types(${arg}_Length)]} {
+						_ccode $handle "    _$arg = Tcl_NewByteArrayObj($arg, ${arg}_Length);"
+					} else {
+						_ccode $handle "    _$arg = Tcl_NewStringObj($arg, -1);"
+					}
+				}
+				Tcl_Obj* {
+					_ccode $handle "    _$arg = $arg;"
+				}
+				default {
+					return -code error "Unknown type: $type"
+				}
+			}
+
+			# If we don't have a procedure to call, set the variables locally
+			if {$procname == ""} {
+				_ccode $handle "    if (!Tcl_ObjSetVar2(${interp_name}, Tcl_NewStringObj(\"${arg}\", -1), NULL, _$arg, 0)) $return_failure;"
+			}
+		}
+		_ccode $handle ""
+
+		# Evaluate script
+		if {$procname != ""} {
+			_ccode $handle "    static int proc_defined = 0;"
+			_ccode $handle "    if (proc_defined == 0) \{"
+			_ccode $handle "        proc_defined = 1;"
+			set extra_space "    "
+		} else {
+			set extra_space ""
+		}
+
+		_ccode $handle "${extra_space}    tclrv = Tcl_Eval($interp_name, \"$cbody\");"
+		_ccode $handle "${extra_space}    if (tclrv != TCL_OK && tclrv != TCL_RETURN) $return_failure;"
+
+		if {$procname != ""} {
+			_ccode $handle "    \}"
+			set i 0
+			_ccode $handle "    Tcl_Obj *objv\[[expr {[llength $args] + 1}]\];"
+			_ccode $handle "    objv\[$i\] = Tcl_NewStringObj(\"$procname\", -1);"
+			foreach arg $args {
+				incr i
+				_ccode $handle "    objv\[$i\] = _$arg;"
+			}
+			_ccode $handle "    tclrv = Tcl_EvalObjv($interp_name, [expr {[llength $args] + 1}], objv, 0);"
+		}
+		_ccode $handle "    if (tclrv != TCL_OK && tclrv != TCL_RETURN) $return_failure;"
+		_ccode $handle ""
+
+		# Handle return value
+		if {$rtype != "ok" && $rtype != "void"} {
+			_ccode $handle "    rv_interp = Tcl_GetObjResult(${interp_name});"
+		}
+
+		switch -- $rtype {
+			void { }
+			ok {
+				_ccode $handle "    rv = TCL_OK;"
+			}
+			int {
+				_ccode $handle "    if (Tcl_GetIntFromObj(ip, rv_interp, &rv) != TCL_OK) $return_failure;"
+			}
+			long {
+				_ccode $handle "    if (Tcl_GetLongFromObj(ip, rv_interp, &rv) != TCL_OK) $return_failure;"
+			}
+			Tcl_WideInt {
+				_ccode $handle "    if (Tcl_GetWideIntFromObj(ip, rv_interp, &rv) != TCL_OK) $return_failure;"
+			}
+			float {
+				_ccode $handle "    {"
+				_ccode $handle "        double t;"
+				_ccode $handle "        if (Tcl_GetDoubleFromObj(ip, rv_interp, &t) != TCL_OK) $return_failure;"
+				_ccode $handle "        rv = (float) t;"
+				_ccode $handle "    }"
+			}
+			double {
+				_ccode $handle "    if (Tcl_GetDoubleFromObj(ip, rv_interp, &rv) != TCL_OK) $return_failure;"
+			}
+			char* {
+				_ccode $handle "    rv = Tcl_GetString(rv_interp);"
+			}
+			Tcl_Obj* {
+				_ccode $handle "    rv = rv_interp;"
+			}
+		}
+
+		# Cleanup created interp if needed
+		if {$newInterp} {
+			_ccode $handle "    Tcl_DeleteInterp(${interp_name});"
+		}
+
+		# Return value
+		_ccode $handle ""
+		if {$rtype != "void"} {
+			_ccode $handle "    return(rv);"
+		} else {
+			_ccode $handle "    return;"
+		}
+		_ccode $handle "\}"
+	}
+
+	proc _go {handle {outputOnly 0}} {
+		variable dir
+		variable needInterp
+		
+	    proc initModInterp {astate} {
+            # init module wide interp to use in external callbacks
+            # set module_init "int loot_interp (Tcl_Interp* interp) {\n"
+            # this code will only be used, if needInterp is set to 1
+            # wether manually after creation or from tcc4tcl::tclwrap
+            
+            set module_init ""
+            append module_init  "   mod_Tcl_interp = interp;\n"
+            append module_init  "    return 1;\n"
+            #append module_init  "}\n";
+            append module_head "/* All TCL needs an interp... */\n"
+            append module_head "/* External callbacks won't know about an Tcl_Interp, so ...*/\n"
+            append module_head "/* we install a module scope global interp here ...*/\n"
+            append module_head "static Tcl_Interp*  mod_Tcl_interp;\n"
+            append module_head "static int mod_Tcl_errorCode;\n"
+    
+            set name "loot_interp"
+            set adefs {Tcl_Interp* interp}
+            set rtype int
+            set body $module_init
+            set wrap [uplevel 0 [list ::tcc4tcl::wrap $name $adefs $rtype $body]]
+            set wrapped [lindex $wrap 0]
+            set wrapper [lindex $wrap 1]
+            set tclname [lindex $wrap 2]
+            set module_init ""
+            if {$astate!=""} {
+                upvar $astate state
+                lappend state(procs) $name [list $tclname]
+                set module_init "$wrapped \n$wrapper \n"
+            }
+
+            return "$module_head\n$module_init\n"
+	    }
+	    
+		upvar #0 $handle state
+
+		set code ""
+		set module_head ""
+		set module_init ""
+		
+		variable hasTK 0
+
+        #puts "Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
+        switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
+            "Linux-*" {
+                #puts "Linux"
+                # could use ::tcl::pkgconfig in future versions
+                $handle add_include_path  "${dir}/include/"
+                if {[string first mob $::TCC_VERSION]>-1} {
+                    # ok temporary patch to have mob includes next to stdinc
+                    if {[file exists "${dir}/include/stdinc_mob/"]} {
+                        $handle add_include_path  "${dir}/include/stdinc_mob/"
+                    } else {
+                        $handle add_include_path  "${dir}/include/stdinc/"
+                    }
+                } else {
+                    $handle add_include_path  "${dir}/include/stdinc/"
+                }
+                $handle add_include_path  "/usr/include/"
+                $handle add_include_path  "/usr/include/x86_64-linux-gnu"
+                $handle add_include_path  "${dir}/include/generic"
+                $handle add_include_path  "${dir}/include/xlib"
+                $handle add_include_path  "${dir}/include/generic/unix"
+                set outfileext so
+                set tclstub tclstub86_64
+                set tkstub tkstub86_64
+                set DLLEXPORT "__attribute__ ((visibility(\"default\")))"
+                set libdir $dir/lib
+            }
+            "Windows*" {
+                #puts "Windows $dir"
+                $handle add_include_path  "${dir}/include/"
+                $handle add_include_path  "${dir}/include/generic"
+                $handle add_include_path  "${dir}/include/xlib"
+                $handle add_include_path  "${dir}/include/generic/win"
+                #$handle add_include_path  "${dir}/win32"
+                #$handle add_include_path  "${dir}/win32/winapi"
+                set outfileext dll
+                set tclstub tclstub86elf
+                set tkstub tkstub86elf
+                set DLLEXPORT "__declspec(dllexport)"
+                set libdir $dir
+            }
+            default {
+                puts "Unknow Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
+                set libdir $dir/lib
+                return
+            }
+        }
+        
+		foreach {macroName macroVal} $state(add_macros) {
+			append code "#define [string trim "$macroName $macroVal"]\n"
+		}
+		append code $state(code) "\n"
+		
+		# undef DLLEXPORT, since tcl.h and tk.h may have it defined differntly from what we want
+		set code "#undef DLLEXPORT \n#undef DLLIMPORT \n$code"
+		
+		if {$state(type) == "exe" || $state(type) == "dll"} {
+			if {[info exists state(procs)] && [llength $state(procs)] > 0} {
+				set code "int _initProcs(Tcl_Interp *interp);\n\n$code"
+			}
+		}
+
+		if {[info exists state(tk)]} {
+		    if {$hasTK==0&&$state(type) == "memory"&&!$outputOnly} {
+                set hasTK 1
+                set name "tkstart"
+                set adefs {Tcl_Interp* interp}
+                set rtype int
+                set body {
+                    if (Tk_InitStubs(interp, TK_VERSION, 0) == NULL) {
+                        return TCL_ERROR;
+                    }
+                    return 1;
+                }
+                set wrap [uplevel 0 [list ::tcc4tcl::wrap $name $adefs $rtype $body]]
+                set wrapped [lindex $wrap 0]
+                set wrapper [lindex $wrap 1]
+                set tclname [lindex $wrap 2]
+                set code "$code\n\n $wrapped \n $wrapper \n"
+                lappend state(procs) $name [list $tclname]
+             }
+			 set compiletkstubs ""
+			 if {$state(type)=="memory"} {
+			     set compiletkstubs "#include <tkStubLib.c>\n"
+			 }
+			 set code "#define USE_TK_STUBS 1\n#include <tk.h>\n$compiletkstubs\n$code"
+		}
+		set modInitCode ""
+		# Append additional generated code to support the output type
+		#puts "Type is $state(type)";
+		switch -- $state(type) {
+			"memory" {
+				# No additional code needed
+				if {$outputOnly} {
+					if {[info exists state(procs)] && [llength $state(procs)] > 0} {
+						foreach {procname cname_obj} $state(procs) {
+							set cname [lindex $cname_obj 0]
+
+							if {[llength $cname_obj] > 1} {
+								set obj [lindex $cname_obj 1]
+							} else {
+								set obj "NULL"
+							}
+
+							append code "/* Immediate: Tcl_CreateObjCommand(interp, \"$procname\", $cname, $obj, Tcc4tclDeleteClientData); */\n"
+						}
+					}
+				}
+			}
+			"exe" - "dll" {
+				if {[info exists state(procs)] && [llength $state(procs)] > 0} {
+					append code "int _initProcs(Tcl_Interp *interp) \{\n"
+					
+					foreach {procname cname_obj} $state(procs) {
+						set cname [lindex $cname_obj 0]
+
+						if {[llength $cname_obj] != 1} {
+							error "ClientData not supported in exe / dll mode"
+						}
+
+						append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
+					}
+					
+                    if {$needInterp!=0} {
+                        append code "  mod_Tcl_interp = interp;\n"
+                    }
+					append code "\}"
+				}
+			}
+			"package" {
+				set packageName [lindex $state(package) 0]
+				set modInitCode [initModInterp ""]
+				set packageVersion [lindex $state(package) 1]
+				set tclversion [lindex $state(package) 2]
+				if {$tclversion eq ""} {
+				    set tclversion "TCL_VERSION"
+				}
+				if {$tclversion ne "TCL_VERSION"} {
+				    #quote it out, it's not a macro probably
+				    set tclversion "\"$tclversion\""
+				}
+				if {$packageVersion == ""} {
+					set packageVersion "1.0"
+				}
+				append code "#ifndef DLLEXPORT \n"
+				append code "#define DLLEXPORT $DLLEXPORT\n"
+				append code "#endif\n"
+				append code "DLLEXPORT \n"
+				append code "int [string totitle $packageName]_Init(Tcl_Interp *interp) \{\n"
+				append code "#ifdef USE_TCL_STUBS\n"
+				append code "  if (Tcl_InitStubs(interp, $tclversion, 0) == 0L) \{\n"
+				append code "    return TCL_ERROR;\n"
+				append code "  \}\n"
+				append code "#endif\n"
+				append code "#ifdef USE_TK_STUBS\n"
+				append code "  if (Tk_InitStubs(interp, $tclversion, 0) == 0L) \{\n"
+				append code "    return TCL_ERROR;\n"
+				append code "  \}\n"
+				append code "#endif\n"
+
+				if {[info exists state(procs)] && [llength $state(procs)] > 0} {
+					foreach {procname cname_obj} $state(procs) {
+						set cname [lindex $cname_obj 0]
+
+						if {[llength $cname_obj] != 1} {
+							error "ClientData not supported in exe / dll mode"
+						}
+
+						append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
+					}
+				}
+
+				append code "  Tcl_PkgProvide(interp, \"$packageName\", \"$packageVersion\");\n"
+				if {$needInterp!=0} {
+                    append code "  mod_Tcl_interp = interp;\n"
+                }
+				append code "  return(TCL_OK);\n"
+				append code "\}"
+			}
+		}
+		
+		if {($modInitCode eq "")&&($needInterp!=0)} {
+		    set modInitCode [initModInterp {*}state]
+		}
+		
+        #add header late
+        set code "#include <tcl.h>\n$modInitCode\n\n$code"
+        
+		if {$outputOnly} {
+			return $code
+		}
+
+		# Generate output code
+		switch -- $state(type) {
+			"package" {
+				set tcc_type "dll"
+				$handle add_library_path  "${dir}/lib/"
+				$handle add_library $tclstub
+				$handle add_library $tkstub
+			}
+			default {
+				set tcc_type $state(type)
+			}
+		}
+
+		if {[info command ::tcc4tcl] == ""} {
+			return -code error "Unable to load tcc4tcl library"
+		}
+
+		::tcc4tcl $libdir $tcc_type tcc
+		
+		foreach path $state(add_inc_path) {
+			tcc add_include_path $path
+		}
+
+		foreach path $state(add_lib_path) {
+			tcc add_library_path $path
+		}
+		tcc add_library_path  "${dir}/lib/"
+
+		foreach lib $state(add_lib) {
+			tcc add_library $lib
+		}
+
+		foreach lib $state(add_file) {
+			tcc add_file $lib
+		}
+
+		foreach {sym adr} $state(add_symbol) {
+			puts [tcc add_symbol $sym $adr] 
+		}
+		
+		
+		switch -- $state(type) {
+			"memory" {
+                set r [tcc compile $code]
+                if {[string trim $r] ne ""} {
+                    puts "Compile result:\n$r\n"
+                }
+                if {[info exists state(procs)] && [llength $state(procs)] > 0} {
+                    foreach {procname cname_obj} $state(procs) {
+                        tcc command $procname {*}$cname_obj
+                    }
+                }
+			}
+
+			"package" - "dll" - "exe" {
+				switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
+					"Linux-8" {
+						tcc add_library_path "/lib64"
+						tcc add_library_path "/usr/lib64"
+						tcc add_library_path "/lib"
+						tcc add_library_path "/usr/lib"
+					}
+					"SunOS-8" {
+						tcc add_library_path "/lib/64"
+						tcc add_library_path "/usr/lib/64"
+						tcc add_library_path "/lib"
+						tcc add_library_path "/usr/lib"
+					}
+					"Linux-*" {
+						tcc add_library_path "/lib32"
+						tcc add_library_path "/usr/lib32"
+						tcc add_library_path "/lib"
+						tcc add_library_path "/usr/lib"
+					}
+					default {
+						if {$::tcl_platform(platform) == "unix"} {
+							tcc add_library_path "/lib"
+							tcc add_library_path "/usr/lib"
+						}
+					}
+				}
+
+                set r [tcc compile $code]
+                if {[string trim $r] ne ""} {
+                    puts "Compile result:\n$r\n"
+                }
+				
+				foreach lib $state(add_lib) {
+					# this is necessary, since tcc tries to load lib alacarte, so no symbols will be resolved before smth is compolied
+					tcc add_library $lib
+				}
+
+				set outfile [file tail $state(filename)]
+				if {![info exists packageName]} {set packageName "."}
+            			if {$outfile==""} {
+                			set outfile $packageName
+            			}
+                if {$state(type)=="exe"} {
+                    set outfileext "exe"
+                }
+				set outfile $outfile.$outfileext
+				if {[file isdir $packageName]} {
+					set outfile [file join $packageName/$outfile]
+				}
+				tcc output_file $outfile 
+				rename $handle ""
+				unset $handle
+				return "TCC_COMPILE_OK"
+			}
+		}
+
+		if {$hasTK>0} {
+		    puts "Starting TK"
+            tkstart
+        }
+        if {$needInterp!=0} {
+            loot_interp
+        }
+		# Cleanup
+		rename $handle ""
+		unset $handle
+		return "TCC_COMPILE_OK"
+	}
+}
+
+proc ::tcc4tcl::checkname {n} {expr {[regexp {^[a-zA-Z0-9_]+$} $n] > 0}}
+proc ::tcc4tcl::cleanname {n} {regsub -all {[^a-zA-Z0-9_]+} $n _}
+
+# takes a tclproc definition
+# and constrcuts the tcl_eval code from it
+# usage
+# tcc4tcl::tclwrap name {adefs {(Tcl_interp* ip,) int i float f ...}} {rtype void} 
+#
+# the resulting code has the form
+# $rtype tcl_$name ( $adefs) {...}
+#
+# and can be used to call into tcl_procs directly from c
+#
+# if (Tcl_interp* ip,) is ommitted
+# tcc4tcl will emit some code to get an interp into module scope
+# static Tcl_Interp* mod_Tcl_Interp;
+#
+# Initialisation is done in the initialisation routine
+
+proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
+    variable needInterp
+    set hasInterp 0
+	if {$name == ""} {
+		return "No TCL Proc name given"
+	}
+
+	set wname tcl_[tcc4tcl::cleanname $name]
+	if {$cname != ""} {
+		set wname $cname
+	}
+
+	# Fully qualified proc name
+	# set name [lookupNamespace $name]
+
+	array set types {}
+	set varnames {}
+	set cargs {}
+	set cnames {}  
+	set cbody {}
+	set code {}
+
+	# if first arg is "Tcl_Interp*", pass it without counting it as a cmd arg
+	while {1} {
+		if {[lindex $adefs 0] eq "Tcl_Interp*"} {
+			lappend cnames ip
+			lappend cargs [lrange $adefs 0 1]
+			set adefs [lrange $adefs 2 end]
+			set hasInterp 1;# else we have to find a module wide instance
+			continue
+		}
+
+		break
+	}
+
+	foreach {t n} $adefs {
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
+	}
+
+	# Handle return type
+	switch -- $rtype {
+		ok      {
+			set rtype2 "int"
+		}
+		float    {
+		    set rtype2 "double"
+		}
+		string - dstring - vstring {
+			set rtype2 "char*"
+		}
+		""      {
+		    set rtype2 "void"
+		}
+		default {
+			set rtype2 $rtype
+		}
+	}
+
+	# Write wrapper
+	if {$hasInterp} {
+	    # the function get it's own interp from caller
+#        append cbody "$rtype2 $wname\(Tcl_Interp *ip, "
+    } else {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_Tcl_interp
+        set needInterp 1
+    }
+    append cbody "$rtype2 $wname\("
+
+	# Create wrapped function
+	if {[llength $cargs] != 0} {
+		set cargs_str [join $cargs {, }]
+	} else {
+		set cargs_str "void"
+	}
+    append cbody "$cargs_str"
+	append cbody ") {" "\n"
+
+    set cname [namespace tail $name]
+
+	# Create wrapper function
+	## Supported input types
+	##   Tcl_Interp*
+	##   ClientData
+	##   int
+	##   long
+	##   float
+	##   double
+	##   char*
+	##   Tcl_Obj*
+	##   void*
+	##   Tcl_WideInt
+
+	set n 0
+	set fmtstr "%s"
+	set varstr ""
+	set cobjstring "    Tcl_Obj*  argObjvArray \[[expr [llength $varnames]+1]\];\n\n"
+	set cleanupstring ""
+    append cobjstring "    Tcl_Obj* funcname = Tcl_NewStringObj(\"$name\",-1);\n"
+    append cobjstring "    Tcl_IncrRefCount(funcname);\n"
+    append cobjstring "    argObjvArray\[$n\] = funcname;\n\n"
+    
+    append cleanupstring "    if(funcname!=NULL) Tcl_DecrRefCount(funcname);\n"
+	
+	foreach x $varnames {
+        incr n
+		switch -- $types($x) {
+			int {
+				append fmtstr " %d"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
+			}
+			long {
+				append fmtstr " %d"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
+			}
+			Tcl_WideInt {
+				append fmtstr " %d"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
+			}
+			float {
+				append fmtstr " %f"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewDoubleObj((double) $x);\n"
+			}
+			double {
+				append fmtstr " %f"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewDoubleObj((double) $x);\n"
+			}
+			char* {
+				append fmtstr " \\\"%s\\\""
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewStringObj($x, -1);\n"
+				
+			}
+			default {
+				append fmtstr " \\\"%s\\\""
+				append cobjstring "    Tcl_Obj* Tcl_Obj* target_$n = Tcl_NewStringObj($x,-1);\n"
+			}
+		}
+        append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+        append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+		append cobjstring "    \n"
+        append cleanupstring "    if(target_$n != NULL) Tcl_DecrRefCount(target_$n);\n"
+		append varstr ",$x"
+	}
+	incr n
+	if {!$hasInterp} {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_Tcl_interp
+        set needInterp 1
+        append cbody "    Tcl_Interp* ip = mod_Tcl_interp;\n"
+        append cbody "    if (ip==NULL) Tcl_Panic(\"No interp found to call tcl routine!\");\n"
+        append cbody "    mod_Tcl_errorCode=0;\n"
+    }
+	append cbody "    char buf \[2048\];\n"
+	append cbody $cobjstring
+    #append cbody "    sprintf (buf, \"$fmtstr\", \"$name\"$varstr);\n"
+	append cbody "    int rs = Tcl_EvalObjv(ip, $n, argObjvArray, 0);\n"
+	# check eval for erros and try reporting
+    append cbody $cleanupstring;
+    append cbody "    if(rs !=TCL_OK) {\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        snprintf (buf, 2048, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    append cbody "        Tcl_Eval (ip, \"puts {STACK TRACE:}; puts \$errorInfo; flush stdout;\");\n"
+
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	append cbody "    \n\n"
+
+	# Call wrapped function
+	if {$rtype2 != "void"} {
+		append cbody "    $rtype2 rv;\n"
+	}
+
+	# Return types supported by critcl
+	#   void
+	#   ok
+	#   int
+	#   long
+	#   float
+	#   double
+	#   char*     (TCL_STATIC char*)
+	#   string    (TCL_DYNAMIC char*)
+	#   dstring   (TCL_DYNAMIC char*)
+	#   vstring   (TCL_VOLATILE char*)
+	#   default   (Tcl_Obj*)
+	#   Tcl_WideInt
+
+	switch -- $rtype2 {
+		void           { append cbody "    return; \n" }
+		int            { append cbody "    rs=Tcl_GetIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		long           { append cbody "    rs=Tcl_GetLongFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		Tcl_WideInt    { append cbody "    rs=Tcl_GetWideIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		float          -
+		double         { append cbody "    rs=Tcl_GetDoubleFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		char*          { append cbody "    rv=Tcl_GetStringFromObj(Tcl_GetObjResult(ip),NULL);" "\n" }
+		default        { append cbody "    rv=NULL;\n" }
+	}
+	# check result for erros and try reporting
+    #append cbody $cleanupstring;
+    append cbody "    if(rs !=TCL_OK) {\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        sprintf (buf, \"puts {error in result of tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	if {$rtype2 != "void"} {
+		append cbody "    return rv;\n"
+	}
+
+	append cbody "}" "\n"
+
+	return $cbody
+}
+
+proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
+    variable needInterp
+    set hasInterp 0
+	if {$name == ""} {
+		return "No TCL Proc name given"
+	}
+
+	set wname tcl_[tcc4tcl::cleanname $name]
+	if {$cname != ""} {
+		set wname $cname
+	}
+
+	# Fully qualified proc name
+	# set name [lookupNamespace $name]
+
+	array set types {}
+	set varnames {}
+	set cargs {}
+	set cnames {}  
+	set cbody {}
+	set code {}
+
+	# if first arg is "Tcl_Interp*", pass it without counting it as a cmd arg
+	while {1} {
+		if {[lindex $adefs 0] eq "Tcl_Interp*"} {
+			lappend cnames ip
+			lappend cargs [lrange $adefs 0 1]
+			set adefs [lrange $adefs 2 end]
+			set hasInterp 1;# else we have to find a module wide instance
+			continue
+		}
+
+		break
+	}
+
+	foreach {t n} $adefs {
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
+	}
+
+	# Handle return type
+	switch -- $rtype {
+		ok      {
+			set rtype2 "int"
+		}
+		float    {
+		    set rtype2 "double"
+		}
+		string - dstring - vstring {
+			set rtype2 "char*"
+		}
+		""      {
+		    set rtype2 "void"
+		}
+		default {
+			set rtype2 $rtype
+		}
+	}
+
+	# Write wrapper
+	if {$hasInterp} {
+	    # the function get it's own interp from caller
+#        append cbody "$rtype2 $wname\(Tcl_Interp *ip, "
+    } else {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_Tcl_interp
+        set needInterp 1
+    }
+    append cbody "$rtype2 $wname\("
+
+	# Create wrapped function
+	if {[llength $cargs] != 0} {
+		set cargs_str [join $cargs {, }]
+	} else {
+		set cargs_str "void"
+	}
+    append cbody "$cargs_str"
+	append cbody ") {" "\n"
+
+    set cname [namespace tail $name]
+
+	# Create wrapper function
+	## Supported input types
+	##   Tcl_Interp*
+	##   ClientData
+	##   int
+	##   long
+	##   float
+	##   double
+	##   char*
+	##   Tcl_Obj*
+	##   void*
+	##   Tcl_WideInt
+
+	set n 0
+	set fmtstr "%s"
+	set varstr ""
+	foreach x $varnames {
+		incr n
+		switch -- $types($x) {
+			int {
+				append fmtstr " %d"
+			}
+			long {
+				append fmtstr " %d"
+			}
+			Tcl_WideInt {
+				append fmtstr " %d"
+			}
+			float {
+				append fmtstr " %f"
+			}
+			double {
+				append fmtstr " %f"
+			}
+			char* {
+				append fmtstr " \\\"%s\\\""
+			}
+			default {
+				append fmtstr " \\\"%s\\\""
+			}
+		}
+		append varstr ",$x"
+	}
+	if {!$hasInterp} {
+        # no interp in context, try finding a module wide instance
+        # nameing convention:
+        # mod_Tcl_interp
+        set needInterp 1
+        append cbody "    Tcl_Interp* ip = mod_Tcl_interp;\n"
+        append cbody "    if (ip==NULL) Tcl_Panic(\"No interp found to call tcl routine!\");\n"
+        append cbody "    mod_Tcl_errorCode=0;\n"
+    }
+	append cbody "    char buf \[2048\];\n"
+    append cbody "    snprintf (buf, 2048, \"$fmtstr\", \"$name\"$varstr);\n"
+	append cbody "    int rs = Tcl_Eval (ip, buf);\n"
+	# check eval for erros and try reporting
+    append cbody "    if(rs !=TCL_OK) {\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        snprintf (buf, 2048, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    append cbody "         Tcl_Eval(ip, \"puts {STACK TRACE:}; puts \$errorInfo; flush stdout;\");\n"
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	append cbody "    \n\n"
+
+	# Call wrapped function
+	if {$rtype2 != "void"} {
+		append cbody "    $rtype2 rv;\n"
+	}
+
+	# Return types supported by critcl
+	#   void
+	#   ok
+	#   int
+	#   long
+	#   float
+	#   double
+	#   char*     (TCL_STATIC char*)
+	#   string    (TCL_DYNAMIC char*)
+	#   dstring   (TCL_DYNAMIC char*)
+	#   vstring   (TCL_VOLATILE char*)
+	#   default   (Tcl_Obj*)
+	#   Tcl_WideInt
+
+	switch -- $rtype2 {
+		void           { append cbody "    return; \n" }
+		int            { append cbody "    rs=Tcl_GetIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		long           { append cbody "    rs=Tcl_GetLongFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		Tcl_WideInt    { append cbody "    rs=Tcl_GetWideIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		float          -
+		double         { append cbody "    rs=Tcl_GetDoubleFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
+		char*          { append cbody "    rv=Tcl_GetStringFromObj(Tcl_GetObjResult(ip),NULL);" "\n" }
+		default        { append cbody "    rv=NULL;\n" }
+	}
+	# check result for erros and try reporting
+    append cbody "    if(rs !=TCL_OK) {\n"
+	if {!$hasInterp} {
+        append cbody "        mod_Tcl_errorCode=rs;\n"
+    }
+    append cbody "        const char* err = Tcl_GetStringResult(ip);\n"
+    append cbody "        sprintf (buf, \"puts {error in result of tcl-proc $name\\n%s}\",err);\n"
+    append cbody "        Tcl_Eval (ip, buf);\n"
+    if {$rtype2!="void"} {
+        append cbody "        return ($rtype2) NULL ;\n"
+    } else {
+        append cbody "        return ;\n"
+    }
+    append cbody "    }\n"
+	if {$rtype2 != "void"} {
+		append cbody "    return rv;\n"
+	}
+
+	append cbody "}" "\n"
+
+	return $cbody
+}
+
+proc ::tcc4tcl::cproc {name adefs rtype {body "#"}} {
+	set handle [::tcc4tcl::new]
+	$handle cproc $name $adefs $rtype $body
+	return [$handle go]
+}
+
+proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0}} {
+	if {$cname == ""} {
+		set cname c_[tcc4tcl::cleanname $name]
+	}
+
+	set wname tcl_[tcc4tcl::cleanname $name]
+
+	# Fully qualified proc name
+	set name [lookupNamespace $name]
+
+	array set types {}
+	set varnames {}
+	set cargs {}
+	set cnames {}  
+	set cbody {}
+	set code {}
+
+	# Write wrapper
+	append cbody "int $wname\(ClientData clientdata, Tcl_Interp *ip, int objc, Tcl_Obj *CONST objv\[\]) {" "\n"
+
+	# if first arg is "Tcl_Interp*", pass it without counting it as a cmd arg
+	while {1} {
+		if {[lindex $adefs 0] eq "Tcl_Interp*"} {
+			lappend cnames ip
+			lappend cargs [lrange $adefs 0 1]
+			set adefs [lrange $adefs 2 end]
+
+			continue
+		}
+
+		if {[lindex $adefs 0] eq "ClientData"} {
+			lappend cnames clientdata
+			lappend cargs [lrange $adefs 0 1]
+			set adefs [lrange $adefs 2 end]
+
+			continue
+		}
+
+		break
+	}
+
+	foreach {t n} $adefs {
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
+	}
+
+	# Handle return type
+	switch -- $rtype {
+		ok      {
+			set rtype2 "int"
+		}
+		string - dstring - vstring {
+			set rtype2 "char*"
+		}
+		default {
+			set rtype2 $rtype
+		}
+	}
+
+	# Create wrapped function
+	if {[llength $cargs] != 0} {
+		set cargs_str [join $cargs {, }]
+	} else {
+		set cargs_str "void"
+	}
+
+	if {$body ne "#"} {
+		append code "static $rtype2 ${cname}($cargs_str) \{\n"
+		append code $body
+		append code "\}\n"
+	} else {
+		set cname [namespace tail $name]
+
+		if {$includePrototype} {
+			append code "$rtype2 ${cname}($cargs_str);\n"
+		}
+	}
+
+	# Create wrapper function
+	## Supported input types
+	##   Tcl_Interp*
+	##   ClientData
+	##   int
+	##   long
+	##   float
+	##   double
+	##   char*
+	##   Tcl_Obj*
+	##   void*
+	##   Tcl_WideInt
+	foreach x $varnames {
+		set t $types($x)
+
+		switch -- $t {
+			int - long - float - double - char* - Tcl_WideInt - Tcl_Obj* {
+				append cbody "  $types($x) _$x;" "\n"
+			}
+			default {
+				append cbody "  void *_$x;" "\n"
+			}
+		}
+	}
+
+	if {$rtype ne "void"} {
+		append cbody  "  $rtype2 rv;" "\n"
+	}  
+
+	append cbody "  if (objc != [expr {[llength $varnames] + 1}]) {" "\n"
+	append cbody "    Tcl_WrongNumArgs(ip, 1, objv, \"[join $varnames { }]\");\n"
+	append cbody "    return TCL_ERROR;" "\n"
+	append cbody "  }" "\n"
+
+	set n 0
+	foreach x $varnames {
+		incr n
+		switch -- $types($x) {
+			int {
+				append cbody "  if (Tcl_GetIntFromObj(ip, objv\[$n], &_$x) != TCL_OK)"
+				append cbody "    return TCL_ERROR;" "\n"
+			}
+			long {
+				append cbody "  if (Tcl_GetLongFromObj(ip, objv\[$n], &_$x) != TCL_OK)"
+				append cbody "    return TCL_ERROR;" "\n"
+			}
+			Tcl_WideInt {
+				append cbody "  if (Tcl_GetWideIntFromObj(ip, objv\[$n], &_$x) != TCL_OK)"
+				append cbody "    return TCL_ERROR;" "\n"
+			}
+			float {
+				append cbody "  {" "\n"
+				append cbody "    double t;" "\n"
+				append cbody "    if (Tcl_GetDoubleFromObj(ip, objv\[$n], &t) != TCL_OK)"
+				append cbody "      return TCL_ERROR;" "\n"
+				append cbody "    _$x = (float) t;" "\n"
+				append cbody "  }" "\n"
+			}
+			double {
+				append cbody "  if (Tcl_GetDoubleFromObj(ip, objv\[$n], &_$x) != TCL_OK)"
+				append cbody "    return TCL_ERROR;" "\n"
+			}
+			char* {
+				append cbody "  _$x = Tcl_GetString(objv\[$n]);" "\n"
+			}
+			default {
+				append cbody "  _$x = objv\[$n];" "\n"
+			}
+		}
+	}
+	append cbody "\n"
+
+	# Call wrapped function
+	if {$rtype != "void"} {
+		append cbody "  rv = "
+	}
+	append cbody "${cname}([join $cnames {, }]);" "\n"
+
+	# Return types supported by critcl
+	#   void
+	#   ok
+	#   int
+	#   long
+	#   float
+	#   double
+	#   char*     (TCL_STATIC char*)
+	#   string    (TCL_DYNAMIC char*)
+	#   dstring   (TCL_DYNAMIC char*)
+	#   vstring   (TCL_VOLATILE char*)
+	#   default   (Tcl_Obj*)
+	#   Tcl_WideInt
+	switch -- $rtype {
+		void - ok - int - long - float - double - Tcl_WideInt {}
+		default {
+			append cbody "  if (rv == NULL) {\n"
+			append cbody "    return(TCL_ERROR);\n"
+			append cbody "  }\n"
+		}
+	}
+
+	switch -- $rtype {
+		void           { }
+		ok             { append cbody "  return rv;" "\n" }
+		int            { append cbody "  Tcl_SetIntObj(Tcl_GetObjResult(ip), rv);" "\n" }
+		long           { append cbody "  Tcl_SetLongObj(Tcl_GetObjResult(ip), rv);" "\n" }
+		Tcl_WideInt    { append cbody "  Tcl_SetWideIntObj(Tcl_GetObjResult(ip), rv);" "\n" }
+		float          -
+		double         { append cbody "  Tcl_SetDoubleObj(Tcl_GetObjResult(ip), rv);" "\n" }
+		char*          { append cbody "  Tcl_SetResult(ip, rv, TCL_STATIC);" "\n" }
+		string         -
+		dstring        { append cbody "  Tcl_SetResult(ip, rv, TCL_DYNAMIC);" "\n" }
+		vstring        { append cbody "  Tcl_SetResult(ip, rv, TCL_VOLATILE);" "\n" }
+		default        { append cbody "  Tcl_SetObjResult(ip, rv); /*Tcl_DecrRefCount(rv);*/" "\n" }
+	}
+
+	if {$rtype != "ok"} {
+		append cbody "  return TCL_OK;\n"
+	}
+
+	append cbody "}" "\n"
+
+	return [list $code $cbody $wname]
+}
+
+namespace eval tcc4tcl {namespace export cproc}
+package provide tcc4tcl "0.41"
+
+
