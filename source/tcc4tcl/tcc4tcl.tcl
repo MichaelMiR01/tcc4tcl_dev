@@ -80,7 +80,7 @@ namespace eval tcc4tcl {
 			set callcmd ::tcc4tcl::_$cmd
 
 			if {[info command $callcmd] == ""} {
-				return -code error "unknown or ambiguous subcommand \"$cmd\": must be cwrap, ccode, cproc, ccommand, delete, linktclcommand, code, tk, add_include_path, add_library_path, add_library, process_command_line, or go"
+				return -code error "unknown or ambiguous subcommand \"$cmd\": must be cwrap, ccode, cproc, ccommand, tclwrap, delete, linktclcommand, code, tk, add_include_path, add_library_path, add_library, process_command_line, or go"
 			}
 
 			uplevel 1 [list $callcmd $handle {*}$args]
@@ -171,9 +171,15 @@ namespace eval tcc4tcl {
 		lappend state(procdefs) $name [list $tclname $rtype $adefs]
 	}
 
-	proc _tclwrap {handle name adefs rtype} {
+	proc _tclwrap {handle name {adefs {}} {rtype void} {cname ""}} {
 		upvar #0 $handle state
-		set code [tcc4tcl::tclwrap $name $adefs $rtype]
+		set code [tcc4tcl::tclwrap $name $adefs $rtype $cname]
+		append state(code) $code "\n"
+	}
+
+	proc _tclwrap_eval {handle name {adefs {}} {rtype void} {cname ""}} {
+		upvar #0 $handle state
+		set code [tcc4tcl::tclwrap_eval $name $adefs $rtype $cname]
 		append state(code) $code "\n"
 	}
 
@@ -886,7 +892,7 @@ proc ::tcc4tcl::cleanname {n} {regsub -all {[^a-zA-Z0-9_]+} $n _}
 #
 # Initialisation is done in the initialisation routine
 
-proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
+proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
     variable needInterp
     set hasInterp 0
 	if {$name == ""} {
@@ -894,6 +900,9 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	}
 
 	set wname tcl_[tcc4tcl::cleanname $name]
+	if {$cname != ""} {
+		set wname $cname
+	}
 
 	# Fully qualified proc name
 	# set name [lookupNamespace $name]
@@ -984,9 +993,12 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	set fmtstr "%s"
 	set varstr ""
 	set cobjstring "    Tcl_Obj*  argObjvArray \[[expr [llength $varnames]+1]\];\n\n"
+	set cleanupstring ""
     append cobjstring "    Tcl_Obj* funcname = Tcl_NewStringObj(\"$name\",-1);\n"
     append cobjstring "    Tcl_IncrRefCount(funcname);\n"
     append cobjstring "    argObjvArray\[$n\] = funcname;\n\n"
+    
+    append cleanupstring "    if(funcname!=NULL) Tcl_DecrRefCount(funcname);\n"
 	
 	foreach x $varnames {
         incr n
@@ -994,48 +1006,37 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 			int {
 				append fmtstr " %d"
 				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
-				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
-				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
 			}
 			long {
 				append fmtstr " %d"
 				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
-				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
-				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
 			}
 			Tcl_WideInt {
 				append fmtstr " %d"
 				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewWideIntObj((Tcl_WideInt) $x);\n"
-				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
-				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
 			}
 			float {
 				append fmtstr " %f"
 				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewDoubleObj((double) $x);\n"
-				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
-				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
 			}
 			double {
 				append fmtstr " %f"
 				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewDoubleObj((double) $x);\n"
-				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
-				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
 			}
 			char* {
 				append fmtstr " \\\"%s\\\""
 				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewStringObj($x, -1);\n"
-				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
-				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
 				
 			}
 			default {
 				append fmtstr " \\\"%s\\\""
-				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewStringObj($x,-1);\n"
-				append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
-				append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
+				append cobjstring "    Tcl_Obj* Tcl_Obj* target_$n = Tcl_NewStringObj($x,-1);\n"
 			}
 		}
+        append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
+        append cobjstring "    argObjvArray\[$n\] = target_$n;\n"
 		append cobjstring "    \n"
+        append cleanupstring "    if(target_$n != NULL) Tcl_DecrRefCount(target_$n);\n"
 		append varstr ",$x"
 	}
 	incr n
@@ -1053,6 +1054,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
     #append cbody "    sprintf (buf, \"$fmtstr\", \"$name\"$varstr);\n"
 	append cbody "    int rs = Tcl_EvalObjv(ip, $n, argObjvArray, 0);\n"
 	# check eval for erros and try reporting
+    append cbody $cleanupstring;
     append cbody "    if(rs !=TCL_OK) {\n"
 	if {!$hasInterp} {
         append cbody "        mod_Tcl_errorCode=rs;\n"
@@ -1061,6 +1063,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
     append cbody "        snprintf (buf, 2048, \"puts {error evaluating tcl-proc $name\\n%s}\",err);\n"
     append cbody "        Tcl_Eval (ip, buf);\n"
     append cbody "        Tcl_Eval (ip, \"puts {STACK TRACE:}; puts \$errorInfo; flush stdout;\");\n"
+
     if {$rtype2!="void"} {
         append cbody "        return ($rtype2) NULL ;\n"
     } else {
@@ -1099,6 +1102,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 		default        { append cbody "    rv=NULL;\n" }
 	}
 	# check result for erros and try reporting
+    #append cbody $cleanupstring;
     append cbody "    if(rs !=TCL_OK) {\n"
 	if {!$hasInterp} {
         append cbody "        mod_Tcl_errorCode=rs;\n"
@@ -1121,7 +1125,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void}} {
 	return $cbody
 }
 
-proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void}} {
+proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
     variable needInterp
     set hasInterp 0
 	if {$name == ""} {
@@ -1129,6 +1133,9 @@ proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void}} {
 	}
 
 	set wname tcl_[tcc4tcl::cleanname $name]
+	if {$cname != ""} {
+		set wname $cname
+	}
 
 	# Fully qualified proc name
 	# set name [lookupNamespace $name]
