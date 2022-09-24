@@ -363,6 +363,8 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	}
 	s->output_type = TCC_OUTPUT_MEMORY;
 	s->static_link = 0;
+	tcc_set_output_type(s,index);
+
 	tcc_set_lib_path(s, Tcl_GetString(objv[1]));
 #define TCC_USE_PTR_SIZE
 #ifndef TCC_USE_PTR_SIZE
@@ -393,7 +395,6 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		tcc_add_symbol(s, "Tcl_initStubs", &Tcl_InitStubs);
 	}
 #endif
-	tcc_set_output_type(s,index);
 
 	/*printf("type: %d\n", index); */
 	Tcl_CreateObjCommand(interp,Tcl_GetString(objv[objc-1]),Tcc4tclHandleCmd,ts,Tcc4tclCCommandDeleteProc);

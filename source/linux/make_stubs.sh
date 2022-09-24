@@ -54,6 +54,7 @@ ${AR} libtclstub86_64.a tclStubLib.o tclOOStubLib.o tclTomMathStubLib.o
 if test -s libtclstub86_64.a; then
     echo "libtclstub86_64.a ok"
 else 
+    echo "libtclstub86_64.a failed"
     rm libtclstub86_64.a 
 fi 
 
@@ -66,6 +67,7 @@ ${AR} libtclstub86elf.a tclStubLib.o tclOOStubLib.o tclTomMathStubLib.o
 if test -s libtclstub86elf.a; then
     echo "libtclstub86elf.a ok"
 else 
+    echo "libtclstub86elf.a failed"
     rm libtclstub86elf.a 
 fi 
 
@@ -77,6 +79,7 @@ ${AR} libtkstub86_64.a tkStubLib.o ttkStubLib.o
 if test -s libtkstub86_64.a; then
     echo "libtkstub86_64.a ok"
 else 
+    echo "libtkstub86_64.a failed"
     rm libtkstub86_64.a 
 fi 
 
@@ -88,6 +91,7 @@ ${AR} libtkstub86elf.a tkStubLib.o ttkStubLib.o
 if test -s libtkstub86elf.a; then
     echo "libtkstub86elf.a ok"
 else 
+    echo "libtkstub86elf.a failed"
     rm libtkstub86elf.a 
 fi 
 
