@@ -363,9 +363,9 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	}
 	s->output_type = TCC_OUTPUT_MEMORY;
 	s->static_link = 0;
+	tcc_set_lib_path(s, Tcl_GetString(objv[1]));
 	tcc_set_output_type(s,index);
 
-	tcc_set_lib_path(s, Tcl_GetString(objv[1]));
 #define TCC_USE_PTR_SIZE
 #ifndef TCC_USE_PTR_SIZE
     tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned long");
