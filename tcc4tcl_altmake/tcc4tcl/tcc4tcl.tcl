@@ -876,23 +876,30 @@ namespace eval tcc4tcl {
 proc ::tcc4tcl::checkname {n} {expr {[regexp {^[a-zA-Z0-9_]+$} $n] > 0}}
 proc ::tcc4tcl::cleanname {n} {regsub -all {[^a-zA-Z0-9_]+} $n _}
 
-# takes a tclproc definition
-# and constrcuts the tcl_eval code from it
+# proc tcc4tcl::tclwrap takes a tclproc definition
+# and constructs the tcl_eval code from it
 # usage
-# tcc4tcl::tclwrap name {adefs {(Tcl_interp* ip,) int i float f ...}} {rtype void} 
+# tcc4tcl::tclwrap name {adefs {(Tcl_interp* ip,) int i float f ...}} {rtype void} {cname ""}
+# tcc4tcl::tclwrap_eval does the same, but the emitted code will call Tcl_Eval instead
 #
 # the resulting code has the form
-# $rtype tcl_$name ( $adefs) {...}
+# $rtype tcl_$name // $cname ( $adefs) {...}
 #
 # and can be used to call into tcl_procs directly from c
+# simply call
+# $cname // tcl_$name (args);
+# or give an Tcl_Interp*
+# cname (ip, args)
 #
 # if (Tcl_interp* ip,) is ommitted
 # tcc4tcl will emit some code to get an interp into module scope
 # static Tcl_Interp* mod_Tcl_Interp;
 #
-# Initialisation is done in the initialisation routine
+# Initialisation of global mod_Tcl_Interp is done in the modules initialisation routine, if neccessary
+#
 
 proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
+    # uses Tcl_EvalObjv
     variable needInterp
     set hasInterp 0
 	if {$name == ""} {
@@ -906,7 +913,9 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 
 	# Fully qualified proc name
 	# set name [lookupNamespace $name]
-
+	if {[info commands ::$name] != "::$name"} {
+	    puts "Warning: proc ::$name undefined"
+	}
 	array set types {}
 	set varnames {}
 	set cargs {}
@@ -1030,7 +1039,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 			}
 			default {
 				append fmtstr " \\\"%s\\\""
-				append cobjstring "    Tcl_Obj* Tcl_Obj* target_$n = Tcl_NewStringObj($x,-1);\n"
+				append cobjstring "    Tcl_Obj* target_$n = Tcl_NewStringObj($x,-1);\n"
 			}
 		}
         append cobjstring "    Tcl_IncrRefCount(target_$n);\n"
@@ -1126,6 +1135,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 }
 
 proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
+    # uses Tcl_Eval
     variable needInterp
     set hasInterp 0
 	if {$name == ""} {
@@ -1135,6 +1145,9 @@ proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
 	set wname tcl_[tcc4tcl::cleanname $name]
 	if {$cname != ""} {
 		set wname $cname
+	}
+	if {[info commands ::$name] != "::$name"} {
+	    puts "Warning: proc ::$name undefined"
 	}
 
 	# Fully qualified proc name
