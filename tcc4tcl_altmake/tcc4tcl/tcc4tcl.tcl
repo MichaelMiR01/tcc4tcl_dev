@@ -687,7 +687,9 @@ namespace eval tcc4tcl {
 			}
 			"package" {
 				set packageName [lindex $state(package) 0]
-				set modInitCode [initModInterp ""]
+				if {$needInterp!=0} {
+				    set modInitCode [initModInterp ""]
+				}
 				set packageVersion [lindex $state(package) 1]
 				set tclversion [lindex $state(package) 2]
 				if {$tclversion eq ""} {
