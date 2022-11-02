@@ -8,14 +8,14 @@ Howto:
 
 1 Download tcc and unpack it into DIR
 
-2 Put tcc4tcl_altmake as a subdir int DIR
+2 Put tcc4tcl_altmake as a subdir into DIR
 
 3       Prepare build files
 
         cd DIR/tcc4tcl_altmake
         prepare_build.sh
 
-3a under window run 
+3a under windows run 
 
         prepare_build_win32.bat
 
@@ -30,7 +30,7 @@ so if a tclsh is in your system path this may work
         ./configure
         make
 
-this make the normal tcc and libtcc1.a
+this will make the normal tcc and libtcc1.a
 
         make tcc4tcl
 
@@ -38,14 +38,14 @@ now the neccessary files should be compiled, especially tcc4tcl.so
 
         make pkg
 
-will make a subdir tcc4tcl-0.40.0-pkg
+will make a subdir tcc4tcl-0.40.0-pkg and place all necessary files there to make a tcl package
 
 4a build under windows:
 
         cd DIR/win32
         build-tcc4tcl-win32.bat (-t 32 -c PATH/TO/GCC/gcc.exe)
 
-will make a subdir tcc4tcl-0.40.0-pkg
+will make a subdir tcc4tcl-0.40.0-pkg (or use the existing from the linux-build :-)
 
 test:
 
@@ -54,8 +54,8 @@ test:
 
 For wine users:
 
-the normal build-tcc.bat uses if (%1)== ... wich, at least under my version of wine, fail
-to avoid this, use replace_bat_for_wine.tcl wich will replace al () with _ _ in build-tcc.bat
+the normal build-tcc.bat uses if (%1)== ... wich, at least under my version of wine, fail.
+to avoid this, use replace_bat_for_wine.tcl wich will replace all () with _ _ in build-tcc.bat
 so it will work under wine (and still under windows also)
 
 Modifications to tcc sources
@@ -102,8 +102,9 @@ The tcl stubs libraries are simply compiled archives. They get compiled from
 
 from the corresponding .c sources.
 
-But I found, that tcc is a bit picky with it's own libraries. So a stub compile from tcc-win will fail if linked from tcc-lin, when used under the same architecture.
+But I found, that tcc is a bit picky with it's own libraries. So a stub compiled from tcc-win will fail if linked from tcc-lin, when used under the same architecture.
 
 Actually, if you want to run both tcc4tcl side by side, they will have to use seperated stubs. In my case, I run tcc-linux 64bit and tcc-win32, so the stubs are separated into tclstub86elf.a (compiled 32bit under windows) and tclstubs86_64.a (compiled under linux 64bit). GCC needs it's own stubs.
 
-So, if in doubt, recompile the stubs manually from source, all necessary source are included in tcc4tcl packages, under linux you can additionally install tcl-dev and use the source from there.
+So, if in doubt, recompile the stubs manually from source, all necessary sourcefiles are included in tcc4tcl packages (include/generic), under linux you can additionally install tcl-dev and use the sources from there.
+
