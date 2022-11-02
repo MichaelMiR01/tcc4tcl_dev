@@ -1,5 +1,5 @@
 # tcc4tcl_dev
-Develop Repo for tcc4tcl (Next generation tcc4tcl)
+Development repository for tcc4tcl (Next generation tcc4tcl)
 
 This repo holds the neccessary files to prepare the next generation patch for tcc >= 0.9.27 (development branch from mob, upcoming release 0.9.28 etc)
 and regulary updated tars of the latest tcc mob branch.
