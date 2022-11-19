@@ -40,6 +40,6 @@ if not exist %tccdir%\win32\include\winapi\winsock2.h (
     xcopy /s/i/q/y .\win32winsock\* %tccdir%\win32\include\winapi\
 )
 
-mkdir %tccdir%\include\stdinc
-copy %tccdir%\include\* %tccdir%\include\stdinc\
+rem mkdir %tccdir%\include\stdinc
+rem copy %tccdir%\include\* %tccdir%\include\stdinc\
 
