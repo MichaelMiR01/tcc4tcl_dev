@@ -18,6 +18,9 @@ mkdir %tcc4tcldir%\lib
 copy .\lib\* %tcc4tcldir%\lib
 copy .\lib\* %tccdir%\lib
 
+mkdir %tcc4tcldir%\doc
+copy .\%tcc4tclsrc%\doc\* %tcc4tcldir%\doc
+
 copy .\%win32src%\*.bat %win32%
 copy .\%win32src%\*.h %win32%
 copy .\%win32src%\replace_bat_for_wine.tcl %win32%

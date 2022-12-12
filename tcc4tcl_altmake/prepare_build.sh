@@ -16,6 +16,11 @@ mkdir $tcc4tcldir/lib
 cp ./lib/* $tcc4tcldir/lib
 cp ./lib/* $tccdir/lib
 
+mkdir $tcc4tcldir/doc
+mkdir $tccdir/doc
+cp ./$tcc4tclsrc/doc/* $tcc4tcldir/doc
+cp ./$tcc4tclsrc/doc/* $tccdir/doc
+
 cp ./$win32src/*.bat $win32
 cp ./$win32src/*.h $win32
 cp ./$win32src/replace_bat_for_wine.tcl $win32

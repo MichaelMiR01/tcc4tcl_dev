@@ -53,6 +53,7 @@ pkg: tcc4tcl.so
 	@$(call IC,$(TOPSRC)/include/*, "$(TCC4TCL_TRG)/include")
 	@$(call IC,$(TOPSRC)/include/*.h $(TOPSRC)/tcclib.h,"$(TCC4TCL_TRG)/include/stdinc")
 	@$(call IC,$(TCC4TCL_SRC)/lib/*, "$(TCC4TCL_TRG)/lib")
+	@$(call IC,$(TCC4TCL_SRC)/doc/*, "$(TCC4TCL_TRG)/doc")
 	@$(call $(if $(findstring .so,$(LIBTCC)),IBw,IFw),$(LIBTCC),"$(TCC4TCL_TRG)")
 	@$(call IF,$(TOPSRC)/libtcc.h,"$(TCC4TCL_TRG)/include/libtcc")
 	@$(call IC,$(TOPSRC)/win32/examples/*, "$(TCC4TCL_TRG)/examples")

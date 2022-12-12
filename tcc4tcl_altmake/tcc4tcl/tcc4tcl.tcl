@@ -1407,7 +1407,7 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 		ok      {
 			set rtype2 "int"
 		}
-		string - dstring - vstring {
+		string - dstring - vstring - fstring {
 			set rtype2 "char*"
 		}
 		default {
@@ -1525,6 +1525,9 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 	#   vstring   (TCL_VOLATILE char*)
 	#   default   (Tcl_Obj*)
 	#   Tcl_WideInt
+	#
+	# Added to allow memory of return value of type char* to be freed
+	#   fstring   (char* freed by call to free() after interp is done with it)
 	switch -- $rtype {
 		void - ok - int - long - float - double - Tcl_WideInt {}
 		default {
@@ -1546,6 +1549,7 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 		string         -
 		dstring        { append cbody "  Tcl_SetResult(ip, rv, TCL_DYNAMIC);" "\n" }
 		vstring        { append cbody "  Tcl_SetResult(ip, rv, TCL_VOLATILE);" "\n" }
+		fstring        { append cbody "  Tcl_SetResult(ip, rv, ((Tcl_FreeProc *) free));" "\n" }
 		default        { append cbody "  Tcl_SetObjResult(ip, rv); /*Tcl_DecrRefCount(rv);*/" "\n" }
 	}
 

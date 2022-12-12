@@ -233,8 +233,11 @@ copy %topdir%\lib\*.def %INST%\lib\
 copy %win32%\lib\*.def %INST%\lib\
 copy .\lib\lib\*.def %INST%\lib\
 
+@if not exist %INST%\doc mkdir %INST%\doc
+echo copy %tcc4tcldir%\doc\* %INST%\doc\
+copy %tcc4tcldir%\doc\* %INST%\doc\
 
-for %%f in (examples libtcc doc) do xcopy /s/i/q/y %win32%\%%f\ %INST%\%%f\
+for %%f in (examples libtcc) do xcopy /s/i/q/y %win32%\%%f\ %INST%\%%f\
 echo copying %topdir%\include %INST%\include
 if not exist %INST%\include mkdir %INST%\include
 xcopy /s/i/q/y %topdir%\include %INST%\include
