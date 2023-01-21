@@ -1112,7 +1112,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 		char*          { append cbody "    rv=Tcl_GetStringFromObj(Tcl_GetObjResult(ip),NULL);" "\n" }
 		default        { append cbody "    rv=NULL;\n" }
 	}
-	# check result for erros and try reporting
+	# check result for errors and try reporting
     #append cbody $cleanupstring;
     append cbody "    if(rs !=TCL_OK) {\n"
 	if {!$hasInterp} {
@@ -1537,6 +1537,7 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 		}
 	}
 
+	set tcl_setstringresult "Tcl_SetObjResult(ip,Tcl_NewStringObj( rv, -1 ));\n"
 	switch -- $rtype {
 		void           { }
 		ok             { append cbody "  return rv;" "\n" }
@@ -1545,9 +1546,9 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 		Tcl_WideInt    { append cbody "  Tcl_SetWideIntObj(Tcl_GetObjResult(ip), rv);" "\n" }
 		float          -
 		double         { append cbody "  Tcl_SetDoubleObj(Tcl_GetObjResult(ip), rv);" "\n" }
-		char*          { append cbody "  Tcl_SetResult(ip, rv, TCL_STATIC);" "\n" }
+		char*          { append cbody "  $tcl_setstringresult" "\n" }
 		string         -
-		dstring        { append cbody "  Tcl_SetResult(ip, rv, TCL_DYNAMIC);" "\n" }
+		dstring        { append cbody "  $tcl_setstringresult" "\n" }
 		vstring        { append cbody "  Tcl_SetResult(ip, rv, TCL_VOLATILE);" "\n" }
 		fstring        { append cbody "  Tcl_SetResult(ip, rv, ((Tcl_FreeProc *) free));" "\n" }
 		default        { append cbody "  Tcl_SetObjResult(ip, rv); /*Tcl_DecrRefCount(rv);*/" "\n" }
