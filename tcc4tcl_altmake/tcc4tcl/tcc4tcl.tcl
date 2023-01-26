@@ -6,6 +6,7 @@ namespace eval tcc4tcl {
 	variable loadedfrom
 	variable needInterp 0
 	set dir [file dirname [info script]]
+	set dir [file normalize $dir]
 	#puts "TCC DIR IS $dir"
 	if {[info command ::tcc4tcl] == ""} {
 		catch { 
@@ -80,7 +81,7 @@ namespace eval tcc4tcl {
 			set callcmd ::tcc4tcl::_$cmd
 
 			if {[info command $callcmd] == ""} {
-				return -code error "unknown or ambiguous subcommand \"$cmd\": must be cwrap, ccode, cproc, ccommand, tclwrap, delete, linktclcommand, code, tk, add_include_path, add_library_path, add_library, process_command_line, or go"
+				return -code error "unknown or ambiguous subcommand \"$cmd\": must be cwrap, ccode, cproc, ccommand, tclwrap, delete, linktclcommand, code, tk, add_include_path, drop_include_path, add_library_path, add_library, add_file, add_symbol, add_options, process_command_line, or go"
 			}
 
 			uplevel 1 [list $callcmd $handle {*}$args]
@@ -121,6 +122,12 @@ namespace eval tcc4tcl {
 
 		lappend state(add_inc_path) {*}$args
 	}
+	proc _add_options {handle args} {
+		upvar #0 $handle state
+
+		lappend state(options) {*}$args
+	}
+	
 	proc _drop_include_path {handle path} {
 		upvar #0 $handle state
 
@@ -555,23 +562,15 @@ namespace eval tcc4tcl {
 		set module_init ""
 		
 		variable hasTK 0
-
+		
         #puts "Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
         switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
             "Linux-*" {
-                #puts "Linux"
+                set dir [file normalize $dir]
+                #puts "Linux $dir"
                 # could use ::tcl::pkgconfig in future versions
                 $handle add_include_path  "${dir}/include/"
-                if {[string first mob $::TCC_VERSION]>-1} {
-                    # ok temporary patch to have mob includes next to stdinc
-                    if {[file exists "${dir}/include/stdinc_mob/"]} {
-                        $handle add_include_path  "${dir}/include/stdinc_mob/"
-                    } else {
-                        $handle add_include_path  "${dir}/include/stdinc/"
-                    }
-                } else {
-                    $handle add_include_path  "${dir}/include/stdinc/"
-                }
+                $handle add_include_path  "${dir}/include/stdinc/"
                 $handle add_include_path  "/usr/include/"
                 $handle add_include_path  "/usr/include/x86_64-linux-gnu"
                 $handle add_include_path  "${dir}/include/generic"
@@ -790,7 +789,14 @@ namespace eval tcc4tcl {
 			puts [tcc add_symbol $sym $adr] 
 		}
 		
-		
+		set ccoptions ""
+		catch {
+		    set ccoptions [join $state(options) " "]
+		    puts "got options $ccoptions"
+		}
+		if {$ccoptions ne ""} {
+		    tcc set_options $ccoptions
+		}
 		switch -- $state(type) {
 			"memory" {
                 set r [tcc compile $code]

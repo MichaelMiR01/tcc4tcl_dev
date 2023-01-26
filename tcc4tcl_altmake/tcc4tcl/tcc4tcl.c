@@ -26,6 +26,13 @@
 #include <tcl.h>
 #include <tclInt.h>
 
+/*
+ * <setjmp.h> is used for the optional error recovery mechanism 
+ */
+
+#include <setjmp.h>
+
+
 // don't include unistd.h since this conflicts with tcl/compat/unistd.h
 #define	_UNISTD_H	1
 
@@ -88,18 +95,18 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	static CONST char *options[] = {
 		"add_include_path", "add_file",  "add_library", 
 		"add_library_path", "add_symbol", "command", "nrcommand", "compile",
-		"define", "get_symbol", "output_file", "undefine",
+		"define", "get_symbol", "output_file", "undefine", "set_options",
 		(char *) NULL
 	};
 	enum options {
 		TCC4TCL_ADD_INCLUDE, TCC4TCL_ADD_FILE, TCC4TCL_ADD_LIBRARY, 
 		TCC4TCL_ADD_LIBRARY_PATH, TCC4TCL_ADD_SYMBOL, TCC4TCL_COMMAND,
 		TCC4TCL_NRCOMMAND, TCC4TCL_COMPILE, TCC4TCL_DEFINE, TCC4TCL_GET_SYMBOL,
-		TCC4TCL_OUTPUT_FILE, TCC4TCL_UNDEFINE
+		TCC4TCL_OUTPUT_FILE, TCC4TCL_UNDEFINE, TCC4TCL_SET_OPTIONS
 	};
 	char *str;
 	int rv;
-
+	
 	ts = (struct TclTCCState *) cdata;
 	s = ts->s;
 
@@ -113,6 +120,23 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
         return TCL_ERROR;
     }
     switch (index) {
+        case TCC4TCL_SET_OPTIONS:
+            if (objc != 3) {
+                Tcl_WrongNumArgs(interp, 2, objv, "options");
+                return TCL_ERROR;
+            } else {
+                tcc_enter_state(s);
+                s->error_set_jmp_enabled = 1;
+            
+                if (setjmp(s->error_jmp_buf) == 0) {
+                    s->nb_errors = 0;
+                    tcc_set_options(s, Tcl_GetString(objv[2]));
+                }
+                s->error_set_jmp_enabled = 0;
+                tcc_exit_state(s);
+                
+                return s->nb_errors != 0 ? TCL_ERROR : TCL_OK;
+            }
         case TCC4TCL_ADD_INCLUDE:   
             if (objc != 3) {
                 Tcl_WrongNumArgs(interp, 2, objv, "path");
