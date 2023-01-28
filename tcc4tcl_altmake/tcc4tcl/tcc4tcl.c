@@ -125,7 +125,9 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 Tcl_WrongNumArgs(interp, 2, objv, "options");
                 return TCL_ERROR;
             } else {
-                tcc_enter_state(s);
+                #ifdef TCC_SET_STATE
+                    tcc_enter_state(s);
+                #endif
                 s->error_set_jmp_enabled = 1;
             
                 if (setjmp(s->error_jmp_buf) == 0) {
@@ -133,7 +135,9 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                     tcc_set_options(s, Tcl_GetString(objv[2]));
                 }
                 s->error_set_jmp_enabled = 0;
-                tcc_exit_state(s);
+                #ifdef TCC_SET_STATE
+                    tcc_exit_state(s);
+                #endif
                 
                 return s->nb_errors != 0 ? TCL_ERROR : TCL_OK;
             }
