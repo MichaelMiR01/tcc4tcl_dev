@@ -244,4 +244,19 @@ critcl::cproc test14 {int x} int {
 }
 puts "Test14: [test14 3]"
 
+if {[file exists fib.src]} {
+puts "Deleting fib.src"
+	file delete fib.src
+}
+puts "Testing preprocessing"
+set handle [tcc4tcl::new fib . preprocess]
+$handle ccode {
+	#include "examples/fib.c";
+}
+puts [$handle go]
+if {[file exists fib.src]} {
+	puts "OK, fib.src exists now"
+}
+
+
 

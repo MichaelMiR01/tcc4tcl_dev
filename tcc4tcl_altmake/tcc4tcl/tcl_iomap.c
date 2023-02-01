@@ -26,6 +26,13 @@
 #include <tcl.h>
 #endif
 
+#ifdef NO_TCC_LIST_SYMBOLS
+void tcc_list_symbols(TCCState *s, void *ctx,
+    void (*symbol_cb)(void *ctx, const char *name, const void *val)) {
+// dummy
+    }
+#endif
+
 #include <fcntl.h>
 
 #define open t_open

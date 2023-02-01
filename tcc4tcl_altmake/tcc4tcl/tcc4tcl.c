@@ -44,7 +44,42 @@ struct TclTCCState {
 	int relocated;
 };
 
+struct TclTCCObj {
+    Tcl_Interp* interp;
+    Tcl_Obj* obj;
+};
+typedef struct TclTCCObj TclTCCObj;
+
+
 void tcc_delete_run(TCCState *s1);
+
+void Tcc4tclAppendSymbol (ClientData cdata, const char *name, const void *val) {
+    //
+    struct TclTCCObj* ts;
+    Tcl_Obj *mystring;
+
+    ts = (struct TclTCCObj *) cdata;
+    Tcl_Interp* interp= ts->interp;
+    Tcl_Obj* listObj=ts->obj;
+    mystring=Tcl_NewStringObj(name, -1);
+    Tcl_ListObjAppendElement(interp, listObj, mystring);
+}
+
+int Tcc4tclListSymbols (Tcl_Interp * interp, TCCState *s) {
+    
+    static struct TclTCCObj listObj;
+    
+    Tcl_Obj *my_list = Tcl_NewListObj(0, NULL);
+    //Tcl_Obj *mystring=Tcl_NewStringObj("syms", -1);
+    //Tcl_ListObjAppendElement(interp, my_list, mystring);
+    listObj.interp=interp;
+    listObj.obj=my_list;
+    // Populate the list however is appropriate for your command
+    tcc_list_symbols (s, &listObj, Tcc4tclAppendSymbol);
+    Tcl_SetObjResult(interp, my_list);
+    return TCL_OK;    
+
+}
 
 static void Tcc4tclErrorFunc(Tcl_Interp * interp, char * msg) {
 	Tcl_AppendResult(interp, msg, "\n", NULL);
@@ -89,20 +124,22 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	void *val_p2;
 	int index;
 	int res;
+    FILE *ppfp = NULL;
+	
 	struct TclTCCState *ts;
 	TCCState *s;
 	Tcl_Obj *sym_addr;
 	static CONST char *options[] = {
 		"add_include_path", "add_file",  "add_library", 
 		"add_library_path", "add_symbol", "command", "nrcommand", "compile",
-		"define", "get_symbol", "output_file", "undefine", "set_options",
+		"define", "get_symbol", "output_file", "undefine", "set_options", "list_symbols",
 		(char *) NULL
 	};
 	enum options {
 		TCC4TCL_ADD_INCLUDE, TCC4TCL_ADD_FILE, TCC4TCL_ADD_LIBRARY, 
 		TCC4TCL_ADD_LIBRARY_PATH, TCC4TCL_ADD_SYMBOL, TCC4TCL_COMMAND,
 		TCC4TCL_NRCOMMAND, TCC4TCL_COMPILE, TCC4TCL_DEFINE, TCC4TCL_GET_SYMBOL,
-		TCC4TCL_OUTPUT_FILE, TCC4TCL_UNDEFINE, TCC4TCL_SET_OPTIONS
+		TCC4TCL_OUTPUT_FILE, TCC4TCL_UNDEFINE, TCC4TCL_SET_OPTIONS, TCC4TCL_LIST_SYMBOLS,
 	};
 	char *str;
 	int rv;
@@ -214,17 +251,17 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
 
             val_p = tcc_get_symbol(s, Tcl_GetString(objv[3]));
             if (val_p == NULL) {
-		    Tcl_AppendResult(interp, "symbol '", Tcl_GetString(objv[3]),"' not found", NULL);
-		    return TCL_ERROR;
-	    }
-
-	    /* the ClientData */
-	    if (objc == 5) {
-		val_o = objv[4];
-		Tcl_IncrRefCount(val_o);
-	    } else {
-		val_o = NULL;
-	    }
+                Tcl_AppendResult(interp, "symbol '", Tcl_GetString(objv[3]),"' not found", NULL);
+                return TCL_ERROR;
+            }
+    
+            /* the ClientData */
+            if (objc == 5) {
+                val_o = objv[4];
+                Tcl_IncrRefCount(val_o);
+            } else {
+                val_o = NULL;
+            }
 
             /*printf("symbol: %x\n",val); */
             Tcl_CreateObjCommand(interp, Tcl_GetString(objv[2]), val_p, val_o, Tcc4tclDeleteClientData);
@@ -246,23 +283,23 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
             
 	        val_p = tcc_get_symbol(s, Tcl_GetString(objv[3]));
 	        if (val_p == NULL) {
-		    Tcl_AppendResult(interp, "symbol '", Tcl_GetString(objv[3]),"' not found", NULL);
-		    return TCL_ERROR;
+                Tcl_AppendResult(interp, "symbol '", Tcl_GetString(objv[3]),"' not found", NULL);
+                return TCL_ERROR;
 	        }
             
 	        val_p2 = tcc_get_symbol(s, Tcl_GetString(objv[4]));
 	        if (val_p2 == NULL) {
-		    Tcl_AppendResult(interp, "symbol '", Tcl_GetString(objv[4]),"' not found", NULL);
-		    return TCL_ERROR;
-	    }
-
-	    /* the ClientData */
-	    if (objc == 6) {
-		val_o = objv[5];
-		Tcl_IncrRefCount(val_o);
-	    } else {
-		val_o = NULL;
-	    }
+                Tcl_AppendResult(interp, "symbol '", Tcl_GetString(objv[4]),"' not found", NULL);
+                return TCL_ERROR;
+            }
+    
+            /* the ClientData */
+            if (objc == 6) {
+                val_o = objv[5];
+                Tcl_IncrRefCount(val_o);
+            } else {
+                val_o = NULL;
+            }
 
 	        /*printf("symbol: %x\n",val); */
 	        Tcl_NRCreateCommand(interp, Tcl_GetString(objv[2]), val_p, val_p2, val_o, Tcc4tclDeleteClientData);
@@ -272,14 +309,38 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 Tcl_AppendResult(interp, "code already relocated, cannot compile more",NULL);
                 return TCL_ERROR;
             }
-            if (objc != 3) {
+            if (objc < 3) {
                 Tcl_WrongNumArgs(interp, 2, objv, "ccode");
                 return TCL_ERROR;
             } else {
-
+if (s->output_type==TCC_OUTPUT_PREPROCESS) {
+    // for preprocessing we need an immediate outfile
+    // this can be given as an extra option on tcc compile code outfile
+    // or set_options -o outfile
+    // else exit this part with error
+    if (objc == 4) {
+        s->outfile = tcc_strdup(Tcl_GetString(objv[3]));
+//        ppfp = fopen(Tcl_GetString(objv[3]), "w");
+    } 
+    ppfp = fopen(s->outfile, "w");
+    if (!ppfp) {
+        Tcl_AppendResult(interp, "could not write preprocessed code, no outfile given or unable to write ",s->outfile, NULL);
+        return TCL_ERROR;
+    }
+    s->ppfp=ppfp;
+}
                 int i;
                 Tcl_GetString(objv[2]);
                 i = tcc_compile_string(s,Tcl_GetString(objv[2]));
+                
+if (ppfp && ppfp != stdout) {
+    fclose(ppfp);
+    // we want to signal to the caller, that after preprocessing no relocation and no output_to_file is wanted anymore
+    // take up new lines to tcc4tcl.tcl for preprocessing and handle this case on it's own
+    Tcl_AppendResult(interp,"Preprocessing ready, exiting... see ",s->outfile,NULL);
+    return TCL_OK;
+}
+                
                 if (i!=0) {
                     Tcl_AppendResult(interp,"compilation failed",NULL);
                     return TCL_ERROR;
@@ -294,6 +355,9 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
             }
             tcc_define_symbol(s,Tcl_GetString(objv[2]),Tcl_GetString(objv[3]));
             return TCL_OK;
+            
+        case TCC4TCL_LIST_SYMBOLS: 
+            return Tcc4tclListSymbols(interp, s);
         case TCC4TCL_GET_SYMBOL:
             if (objc != 3) {
                 Tcl_WrongNumArgs(interp, 2, objv, "symbol");
@@ -329,7 +393,7 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 return TCL_ERROR;
             }
             res = tcc_output_file(s,Tcl_GetString(objv[2]));
-
+            ts->relocated=1;
             if (res!=0) {
                 Tcl_AppendResult(interp, "output to file failed", NULL);
                 return TCL_ERROR;

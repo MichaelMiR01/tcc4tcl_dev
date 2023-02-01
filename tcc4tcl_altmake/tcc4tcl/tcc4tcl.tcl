@@ -5,6 +5,7 @@ namespace eval tcc4tcl {
 	variable count
 	variable loadedfrom
 	variable needInterp 0
+	variable __lastsyms ""
 	set dir [file dirname [info script]]
 	set dir [file normalize $dir]
 	#puts "TCC DIR IS $dir"
@@ -46,11 +47,13 @@ namespace eval tcc4tcl {
 		return $name
 	}
 
-	proc new {{output ""} {pkgName ""}} {
+	proc new {{output ""} {pkgName ""} {compile_type ""}} {
 		variable dir
 		variable count
 
 		variable needInterp
+		variable __lastsyms
+		set __lastsyms ""
 		set needInterp 0
 		
 		set handle ::tcc4tcl::tcc_[incr count]
@@ -63,7 +66,9 @@ namespace eval tcc4tcl {
 				set type "package"
 			}
 		}
-
+		if {$compile_type ne ""} {
+		    set type $compile_type
+		}
 		array set $handle [list code "" type $type filename $output package $pkgName add_inc_path "" add_lib_path "" add_lib "" add_file "" add_macros "" add_symbol ""]
 
 		proc $handle {cmd args} [string map [list @@HANDLE@@ $handle] {
@@ -520,6 +525,7 @@ namespace eval tcc4tcl {
 	proc _go {handle {outputOnly 0}} {
 		variable dir
 		variable needInterp
+		variable __lastsyms
 		
 	    proc initModInterp {astate} {
             # init module wide interp to use in external callbacks
@@ -798,8 +804,27 @@ namespace eval tcc4tcl {
 		    tcc set_options $ccoptions
 		}
 		switch -- $state(type) {
+		    "preprocess" {
+                set outfile [file tail $state(filename)]
+                if {![info exists packageName]} {set packageName "."}
+                        if {$outfile==""} {
+                            set outfile $packageName
+                        }
+                set outfileext "src"
+                set outfile $outfile.$outfileext
+                if {[file isdir $packageName]} {
+                    set outfile [file join $packageName/$outfile]
+                }
+                set r [tcc compile $code $outfile]
+                if {[string trim $r] ne ""} {
+                    puts "Compile result:\n$r\n"
+                }
+                return "TCC_PREPROCESS_OK"
+		    }
 			"memory" {
                 set r [tcc compile $code]
+                set tcc4tcl::__lastsyms [tcc list_symbols]
+
                 if {[string trim $r] ne ""} {
                     puts "Compile result:\n$r\n"
                 }
@@ -811,59 +836,62 @@ namespace eval tcc4tcl {
 			}
 
 			"package" - "dll" - "exe" {
-				switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
-					"Linux-8" {
-						tcc add_library_path "/lib64"
-						tcc add_library_path "/usr/lib64"
-						tcc add_library_path "/lib"
-						tcc add_library_path "/usr/lib"
-					}
-					"SunOS-8" {
-						tcc add_library_path "/lib/64"
-						tcc add_library_path "/usr/lib/64"
-						tcc add_library_path "/lib"
-						tcc add_library_path "/usr/lib"
-					}
-					"Linux-*" {
-						tcc add_library_path "/lib32"
-						tcc add_library_path "/usr/lib32"
-						tcc add_library_path "/lib"
-						tcc add_library_path "/usr/lib"
-					}
-					default {
-						if {$::tcl_platform(platform) == "unix"} {
-							tcc add_library_path "/lib"
-							tcc add_library_path "/usr/lib"
-						}
-					}
-				}
-
+                switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
+                    "Linux-8" {
+                        tcc add_library_path "/lib64"
+                        tcc add_library_path "/usr/lib64"
+                        tcc add_library_path "/lib"
+                        tcc add_library_path "/usr/lib"
+                    }
+                    "SunOS-8" {
+                        tcc add_library_path "/lib/64"
+                        tcc add_library_path "/usr/lib/64"
+                        tcc add_library_path "/lib"
+                        tcc add_library_path "/usr/lib"
+                    }
+                    "Linux-*" {
+                        tcc add_library_path "/lib32"
+                        tcc add_library_path "/usr/lib32"
+                        tcc add_library_path "/lib"
+                        tcc add_library_path "/usr/lib"
+                    }
+                    default {
+                        if {$::tcl_platform(platform) == "unix"} {
+                            tcc add_library_path "/lib"
+                            tcc add_library_path "/usr/lib"
+                        }
+                    }
+                }
+            
                 set r [tcc compile $code]
+            
                 if {[string trim $r] ne ""} {
                     puts "Compile result:\n$r\n"
                 }
-				
-				foreach lib $state(add_lib) {
-					# this is necessary, since tcc tries to load lib alacarte, so no symbols will be resolved before smth is compolied
-					tcc add_library $lib
-				}
-
-				set outfile [file tail $state(filename)]
-				if {![info exists packageName]} {set packageName "."}
-            			if {$outfile==""} {
-                			set outfile $packageName
-            			}
+                
+                foreach lib $state(add_lib) {
+                    # this is necessary, since tcc tries to load lib alacarte, so no symbols will be resolved before smth is compolied
+                    tcc add_library $lib
+                }
+            
+                set outfile [file tail $state(filename)]
+                if {![info exists packageName]} {set packageName "."}
+                        if {$outfile==""} {
+                            set outfile $packageName
+                        }
                 if {$state(type)=="exe"} {
                     set outfileext "exe"
                 }
-				set outfile $outfile.$outfileext
-				if {[file isdir $packageName]} {
-					set outfile [file join $packageName/$outfile]
-				}
-				tcc output_file $outfile 
-				rename $handle ""
-				unset $handle
-				return "TCC_COMPILE_OK"
+                set outfile $outfile.$outfileext
+                if {[file isdir $packageName]} {
+                    set outfile [file join $packageName/$outfile]
+                }
+                tcc output_file $outfile 
+                set tcc4tcl::__lastsyms [tcc list_symbols]
+                
+                rename $handle ""
+                unset $handle
+                return "TCC_COMPILE_OK"
 			}
 		}
 
@@ -874,6 +902,7 @@ namespace eval tcc4tcl {
         if {$needInterp!=0} {
             loot_interp
         }
+
 		# Cleanup
 		rename $handle ""
 		unset $handle

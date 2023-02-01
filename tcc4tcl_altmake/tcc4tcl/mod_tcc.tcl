@@ -2,6 +2,20 @@
 catch {console show}
 cd [file dirname $argv0]
 #--------------------------------------------------------
+# lookup tcc_list_symbols in libtcc.h
+set __has_tcc_list_symbols 0
+set fh [open "libtcc.h" r]
+while {[gets $fh line] > -1} {
+    #
+    if {[string first "tcc_list_symbols" [string trim $line]]>0} {
+        puts "found tcc_list_symbols"
+        set __has_tcc_list_symbols 1
+        break;
+    }
+}
+close $fh
+
+#--------------------------------------------------------
 if {[file exists "tcc.orig.c"]} {
     # already ran thsi script?
     puts "Please check if tcc.c is already modified"
@@ -13,6 +27,9 @@ while {[gets $fh line] > -1} {
      incr linenr
         if {[string eq [string trim $line] "#if ONE_SOURCE"]==1} {
             puts "Modified tcc.c, added #include tcc4tcl/tcl_iomap.c at line $linenr"
+            if {$__has_tcc_list_symbols==0} {
+                puts $fhout "#define NO_TCC_LIST_SYMBOLS"
+            }
             puts $fhout "#include \"tcc4tcl/tcl_iomap.c\""
         }       
         puts $fhout $line
@@ -93,3 +110,5 @@ file rename "win32/include/_mingw.h" "win32/include/_mingw.orig.h"
 file rename "win32/include/_mingw.mod.h" "win32/include/_mingw.h"
 }
 #--------------------------------------------------------
+
+
