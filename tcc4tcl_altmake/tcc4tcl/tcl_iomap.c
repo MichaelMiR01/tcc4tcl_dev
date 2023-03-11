@@ -378,7 +378,7 @@ FILE *t_fdopen(int fd, const char *mode) {
 	#endif
 
     #undef fdopen
-    f=fdopen(fd1,"r");
+    f=fdopen(fd1, mode);
     #define fdopen t_fdopen
     
     if (!f) {

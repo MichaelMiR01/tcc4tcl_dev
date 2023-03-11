@@ -42,6 +42,7 @@
 struct TclTCCState {
 	TCCState *s;
 	int relocated;
+	int initok;
 };
 
 struct TclTCCObj {
@@ -50,8 +51,43 @@ struct TclTCCObj {
 };
 typedef struct TclTCCObj TclTCCObj;
 
+struct TclTccPre {
+    /* output type, see TCC_OUTPUT_XXX */
+    int output_type;
+    char *tcc_lib_path; /* CONFIG_TCCDIR or -B option */
+};
+
+
 
 void tcc_delete_run(TCCState *s1);
+
+static int Tcc4tclSetupCompiler(TCCState *s) {
+    //
+    tcc_set_output_type(s,s->output_type);
+
+    #define TCC_USE_PTR_SIZE
+    #ifndef TCC_USE_PTR_SIZE
+        tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned long");
+        tcc_define_symbol(s, "__PTRDIFF_TYPE__", "long int");
+        tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned long int");
+        tcc_define_symbol(s, "__PTRDIFF_TYPE__", "long int");
+    #endif
+    #ifdef USE_TCL_STUBS
+        tcc_define_symbol(s, "USE_TCL_STUBS", "1");
+        if (s->output_type == TCC_OUTPUT_MEMORY) {
+            /* Only add this symbol if we are compiling to memory */
+            #ifdef TCC_TARGET_PE
+                // define stubsptr as dllimport symbols to satisfy tcc's needs
+                tcc_define_symbol(s, "tclStubsPtr", "(*_imp__tclStubsPtr)");
+                tcc_define_symbol(s, "tclIntStubsPtr", "(*_imp__tclIntStubsPtr)");
+            #endif
+            tcc_add_symbol(s, "tclStubsPtr", &tclStubsPtr);
+            tcc_add_symbol(s, "tclIntStubsPtr", &tclIntStubsPtr);
+            tcc_add_symbol(s, "Tcl_initStubs", &Tcl_InitStubs);
+        }
+    #endif
+
+}
 
 void Tcc4tclAppendSymbol (ClientData cdata, const char *name, const void *val) {
     //
@@ -156,6 +192,7 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 &index) != TCL_OK) {
         return TCL_ERROR;
     }
+
     switch (index) {
         case TCC4TCL_SET_OPTIONS:
             if (objc != 3) {
@@ -175,7 +212,7 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 #ifdef TCC_SET_STATE
                     tcc_exit_state(s);
                 #endif
-                
+
                 return s->nb_errors != 0 ? TCL_ERROR : TCL_OK;
             }
         case TCC4TCL_ADD_INCLUDE:   
@@ -191,6 +228,10 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 Tcl_WrongNumArgs(interp, 2, objv, "filename");
                 return TCL_ERROR;
             } else {
+                if (!ts->initok) {
+                    Tcc4tclSetupCompiler(s);
+                    ts->initok=1;
+                }
                 if(tcc_add_file(s, Tcl_GetString(objv[2]))!=0) {
                     return TCL_ERROR;
                 } else {
@@ -202,6 +243,10 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 Tcl_WrongNumArgs(interp, 2, objv, "lib");
                 return TCL_ERROR;
             } else {
+                if (!ts->initok) {
+                    Tcc4tclSetupCompiler(s);
+                    ts->initok=1;
+                }
                 tcc_add_library(s, Tcl_GetString(objv[2]));
                 return TCL_OK;
             }
@@ -231,6 +276,11 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
             }
 
             val_p = (void *) val;
+
+            if (!ts->initok) {
+                Tcc4tclSetupCompiler(s);
+                ts->initok=1;
+            }
 
             tcc_add_symbol(s,Tcl_GetString(objv[2]), val_p); 
             return TCL_OK; 
@@ -313,36 +363,39 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 Tcl_WrongNumArgs(interp, 2, objv, "ccode");
                 return TCL_ERROR;
             } else {
-if (s->output_type==TCC_OUTPUT_PREPROCESS) {
+                if (!ts->initok) {
+                    Tcc4tclSetupCompiler(s);
+                    ts->initok=1;
+                }
+                
+if ((s->output_type==TCC_OUTPUT_PREPROCESS)||(s->do_debug>1)) {
     // for preprocessing we need an immediate outfile
     // this can be given as an extra option on tcc compile code outfile
     // or set_options -o outfile
     // else exit this part with error
     if (objc == 4) {
         s->outfile = tcc_strdup(Tcl_GetString(objv[3]));
-//        ppfp = fopen(Tcl_GetString(objv[3]), "w");
     } 
     ppfp = fopen(s->outfile, "w");
     if (!ppfp) {
-        Tcl_AppendResult(interp, "could not write preprocessed code, no outfile given or unable to write ",s->outfile, NULL);
-        return TCL_ERROR;
+        Tcl_AppendResult(interp, "could not write preprocessed code//debug files, no outfile given or unable to open ",s->outfile, NULL);
+        //return TCL_ERROR;
     }
     s->ppfp=ppfp;
 }
+
                 int i;
                 Tcl_GetString(objv[2]);
+                
                 i = tcc_compile_string(s,Tcl_GetString(objv[2]));
                 
 if (ppfp && ppfp != stdout) {
     fclose(ppfp);
-    // we want to signal to the caller, that after preprocessing no relocation and no output_to_file is wanted anymore
-    // take up new lines to tcc4tcl.tcl for preprocessing and handle this case on it's own
-    Tcl_AppendResult(interp,"Preprocessing ready, exiting... see ",s->outfile,NULL);
-    return TCL_OK;
+    Tcl_AppendResult(interp,"Preprocessing ready... see ",s->outfile,NULL);
 }
                 
                 if (i!=0) {
-                    Tcl_AppendResult(interp,"compilation failed",NULL);
+                    Tcl_AppendResult(interp,"Compilation failed",NULL);
                     return TCL_ERROR;
                 } else {
                     return TCL_OK;
@@ -453,9 +506,11 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	if (s == NULL) {
 		return(TCL_ERROR);
 	}
-	s->output_type = TCC_OUTPUT_MEMORY;
+	s->output_type = index;
 	s->static_link = 0;
 	tcc_set_lib_path(s, Tcl_GetString(objv[1]));
+	
+/*	
 	tcc_set_output_type(s,index);
 
 #define TCC_USE_PTR_SIZE
@@ -465,18 +520,19 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
     tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned long int");
     tcc_define_symbol(s, "__PTRDIFF_TYPE__", "long int");
 #endif
-	
+	*/
 	ts = (void *) ckalloc(sizeof(*ts));
 	ts->s = s;
     ts->relocated = 0;
+    ts->initok = 0;
 
 
 	tcc_set_error_func(s, interp, (void *)&Tcc4tclErrorFunc);
-
+/*
 #ifdef USE_TCL_STUBS
 	tcc_define_symbol(s, "USE_TCL_STUBS", "1");
 	if (index == TCC_OUTPUT_MEMORY) {
-		/* Only add this symbol if we are compiling to memory */
+		// Only add this symbol if we are compiling to memory 
 		#ifdef TCC_TARGET_PE
 		    // define stubsptr as dllimport symbols to satisfy tcc's needs
             tcc_define_symbol(s, "tclStubsPtr", "(*_imp__tclStubsPtr)");
@@ -487,8 +543,9 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		tcc_add_symbol(s, "Tcl_initStubs", &Tcl_InitStubs);
 	}
 #endif
-
+*/
 	/*printf("type: %d\n", index); */
+	
 	Tcl_CreateObjCommand(interp,Tcl_GetString(objv[objc-1]),Tcc4tclHandleCmd,ts,Tcc4tclCCommandDeleteProc);
 
 	Tcl_SetObjResult(interp, objv[objc-1]);

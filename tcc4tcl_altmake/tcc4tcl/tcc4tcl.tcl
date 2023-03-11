@@ -5,7 +5,14 @@ namespace eval tcc4tcl {
 	variable count
 	variable loadedfrom
 	variable needInterp 0
+	# lastsyms gets symbols from last compilation
+	# symtable can hold reference to all symbols
+	# symtable_auto controls  automatc update of symtable after compiling in memory
+	
 	variable __lastsyms ""
+	variable __symtable ""
+	variable __symtable_auto 1
+
 	set dir [file dirname [info script]]
 	set dir [file normalize $dir]
 	#puts "TCC DIR IS $dir"
@@ -46,13 +53,48 @@ namespace eval tcc4tcl {
 
 		return $name
 	}
+	proc update_symtable {symlist} {
+	    variable __symtable
+	    if {$symlist==""} {
+	        set symlist $__symtable
+	    }
+	    #puts "...Unfiltered: $symlist"
+	    set filtered [lsearch -regexp -all -inline $symlist ^((?!_).*)$]
+	    set filtered [lsearch -regexp -all -inline $filtered ^((?!IAT.).*)$]
+	    set filtered [lsearch -regexp -all -inline $filtered ^((?!@).)*$]
+	    #puts "...Filtered: $filtered"
 
+	    set storedsymbols ""
+        foreach sym $filtered {
+            catch {
+                set adr [tcc get_symbol $sym]
+                lappend storedsymbols $sym $adr 
+            }
+        }
+	    #
+		foreach {sym adr} $storedsymbols {
+		    if {$adr ne ""} {
+                dict set __symtable $sym $adr
+                #puts "...stored $sym in __symtable"
+            }
+		}
+	}
+	proc lookup_Symbol {symname} {
+	    variable __symtable
+	    set adr ""
+	    catch {
+	        set adr [dict get $__symtable $symname]
+	    }
+	    return $adr	    
+	}
 	proc new {{output ""} {pkgName ""} {compile_type ""}} {
 		variable dir
 		variable count
 
 		variable needInterp
 		variable __lastsyms
+		variable __symtable
+		
 		set __lastsyms ""
 		set needInterp 0
 		
@@ -526,6 +568,8 @@ namespace eval tcc4tcl {
 		variable dir
 		variable needInterp
 		variable __lastsyms
+		variable __symtable
+		variable __symtable_auto
 		
 	    proc initModInterp {astate} {
             # init module wide interp to use in external callbacks
@@ -783,6 +827,15 @@ namespace eval tcc4tcl {
 		}
 		tcc add_library_path  "${dir}/lib/"
 
+		set ccoptions ""
+		catch {
+		    set ccoptions [join $state(options) " "]
+		    puts "got options $ccoptions"
+		}
+        
+		tcc set_options $ccoptions
+		
+		
 		foreach lib $state(add_lib) {
 			tcc add_library $lib
 		}
@@ -791,18 +844,12 @@ namespace eval tcc4tcl {
 			tcc add_file $lib
 		}
 
+		
+		
 		foreach {sym adr} $state(add_symbol) {
-			puts [tcc add_symbol $sym $adr] 
+			tcc add_symbol $sym $adr 
 		}
 		
-		set ccoptions ""
-		catch {
-		    set ccoptions [join $state(options) " "]
-		    puts "got options $ccoptions"
-		}
-		if {$ccoptions ne ""} {
-		    tcc set_options $ccoptions
-		}
 		switch -- $state(type) {
 		    "preprocess" {
                 set outfile [file tail $state(filename)]
@@ -823,7 +870,6 @@ namespace eval tcc4tcl {
 		    }
 			"memory" {
                 set r [tcc compile $code]
-                set tcc4tcl::__lastsyms [tcc list_symbols]
 
                 if {[string trim $r] ne ""} {
                     puts "Compile result:\n$r\n"
@@ -833,9 +879,12 @@ namespace eval tcc4tcl {
                         tcc command $procname {*}$cname_obj
                     }
                 }
+                set __lastsyms [tcc list_symbols]
+                if {$__symtable_auto>0} {update_symtable $__lastsyms}
 			}
 
 			"package" - "dll" - "exe" {
+			    puts "Compiling package"
                 switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
                     "Linux-8" {
                         tcc add_library_path "/lib64"
@@ -887,7 +936,7 @@ namespace eval tcc4tcl {
                     set outfile [file join $packageName/$outfile]
                 }
                 tcc output_file $outfile 
-                set tcc4tcl::__lastsyms [tcc list_symbols]
+                set __lastsyms [tcc list_symbols]
                 
                 rename $handle ""
                 unset $handle

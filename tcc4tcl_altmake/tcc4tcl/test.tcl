@@ -197,7 +197,58 @@ $handle cproc callToTclBinaryWrapper {} void {
 }
 puts [$handle code]
 $handle go
+
 callToTclBinaryWrapper
+
+puts "Testing external symbol insertion"
+puts "adr of callToTclBinary [tcc4tcl::lookup_Symbol callToTclBinary]"
+set handle [tcc4tcl::new]
+
+foreach {sym adr} $tcc4tcl::__symtable {
+    $handle add_symbol $sym $adr
+    #puts "Added $sym $adr"
+}
+
+if { [tcc4tcl::lookup_Symbol callToTclBinary]==""} {
+	puts "Symboltable seems broken... getting symbol directly"
+	set adr [tcc get_symbol callToTclBinary]
+	if {$adr ne ""} {
+		puts "Found Symbol callToTclBinary $adr"
+		$handle add_symbol callToTclBinary $adr
+	}
+}
+
+
+
+$handle ccode {
+    extern int callToTclBinary(char* blob, int blob_Length);
+}
+$handle cproc callToTclBinaryWrapper2 {} void {
+	callToTclBinary("test\x00test", 9);
+}
+$handle go
+
+callToTclBinaryWrapper2
+puts "Ok"
+
+#testing for tclwrap
+proc tcl_test {a b} {# pure tcl proc
+    if {$a ne ""} {
+        return "$a\nOK, Result of 2* $b = [expr $b*2]"
+    }
+    return [expr $b*2]
+}
+
+set handle [tcc4tcl::new]
+$handle tclwrap tcl_test {char* text int i} char* mytest1
+$handle cproc c_tcl_test {char* text int i1} char* {
+    return mytest1(text,i1); 
+}
+
+$handle go
+puts [tcl_test "call tcl_test from TCL" 123]
+puts [c_tcl_test "call tcl_test from C" 123]
+
 
 set handle [tcc4tcl::new]
 $handle cproc testClientData {int y} {int} [concat "int x = 3;" {
@@ -228,11 +279,12 @@ $handle ccommand testCCommand {dummy ip objc objv} {
 
 	return(TCL_OK);
 }
+#$handle add_options "-g"
 $handle go
+
 if {[testCCommand] ne "OKAY"} {
 	error "\[testCCommand\] Invalid result"
 }
-
 # Critcl test
 #package require -exact critcl 0
 critcl::ccode {
@@ -244,10 +296,14 @@ critcl::cproc test14 {int x} int {
 }
 puts "Test14: [test14 3]"
 
+puts "Symbols: $tcc4tcl::__lastsyms"
+
 if {[file exists fib.src]} {
 puts "Deleting fib.src"
 	file delete fib.src
 }
+
+if {1} {
 puts "Testing preprocessing"
 set handle [tcc4tcl::new fib . preprocess]
 $handle ccode {
@@ -257,6 +313,6 @@ puts [$handle go]
 if {[file exists fib.src]} {
 	puts "OK, fib.src exists now"
 }
-
+}
 
 
