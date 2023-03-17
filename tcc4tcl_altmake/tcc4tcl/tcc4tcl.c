@@ -51,14 +51,6 @@ struct TclTCCObj {
 };
 typedef struct TclTCCObj TclTCCObj;
 
-struct TclTccPre {
-    /* output type, see TCC_OUTPUT_XXX */
-    int output_type;
-    char *tcc_lib_path; /* CONFIG_TCCDIR or -B option */
-};
-
-
-
 void tcc_delete_run(TCCState *s1);
 
 static int Tcc4tclSetupCompiler(TCCState *s) {
@@ -90,7 +82,6 @@ static int Tcc4tclSetupCompiler(TCCState *s) {
 }
 
 void Tcc4tclAppendSymbol (ClientData cdata, const char *name, const void *val) {
-    //
     struct TclTCCObj* ts;
     Tcl_Obj *mystring;
 
@@ -106,11 +97,8 @@ int Tcc4tclListSymbols (Tcl_Interp * interp, TCCState *s) {
     static struct TclTCCObj listObj;
     
     Tcl_Obj *my_list = Tcl_NewListObj(0, NULL);
-    //Tcl_Obj *mystring=Tcl_NewStringObj("syms", -1);
-    //Tcl_ListObjAppendElement(interp, my_list, mystring);
     listObj.interp=interp;
     listObj.obj=my_list;
-    // Populate the list however is appropriate for your command
     tcc_list_symbols (s, &listObj, Tcc4tclAppendSymbol);
     Tcl_SetObjResult(interp, my_list);
     return TCL_OK;    

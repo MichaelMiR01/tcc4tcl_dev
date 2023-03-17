@@ -830,6 +830,7 @@ namespace eval tcc4tcl {
 		set ccoptions ""
 		catch {
 		    set ccoptions [join $state(options) " "]
+		    puts "got options $ccoptions"
 		}
         
 		tcc set_options $ccoptions
@@ -1021,38 +1022,17 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 		break
 	}
 
-	array set tags {}
 	foreach {t n} $adefs {
-	    if {[string range $t 0 2] eq "ptr"} {
-	        set tag [string range $t 4 end]
-            set types($n) "ptr"
-            set tags($n) $tag
-            lappend varnames $n
-            lappend cnames "_$n"
-            lappend cargs "$tag* $n"
-	    } else {
-            set types($n) $t
-            lappend varnames $n
-            lappend cnames _$n
-            lappend cargs "$t $n"
-        }
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
 	}
 
 	# Handle return type
-	set rtag ""
-	if {[string range $rtype 0 2] eq "ptr"} {
-        set rtag [string range $rtype 4 end]
-        set rtype "ptr"
-    }
 	switch -- $rtype {
 		ok      {
 			set rtype2 "int"
-		}
-		ptr     {
-		    set rtype2 "void*"
-		    if {$rtag ne ""} {
-		        set rtype2 "${rtag}*"
-		    }
 		}
 		float    {
 		    set rtype2 "double"
@@ -1205,6 +1185,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 	#   vstring   (TCL_VOLATILE char*)
 	#   default   (Tcl_Obj*)
 	#   Tcl_WideInt
+
 	switch -- $rtype2 {
 		void           { append cbody "    return; \n" }
 		int            { append cbody "    rs=Tcl_GetIntFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
@@ -1213,15 +1194,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 		float          -
 		double         { append cbody "    rs=Tcl_GetDoubleFromObj(ip,Tcl_GetObjResult(ip),&rv);" "\n" }
 		char*          { append cbody "    rv=Tcl_GetStringFromObj(Tcl_GetObjResult(ip),NULL);" "\n" }
-		default        {
-		    if {$rtype=="ptr"} {
-		        #Cinv_GetPointerFromObj
-		        append cbody "    int cv  = Cinv_GetPointerFromObj(ip, Tcl_GetObjResult(ip), (void*)&rv,\"$rtag\");" "\n"
-		        append cbody "    if(cv!=TCL_OK) return ($rtype2) NULL;" "\n" 
-		    } else {
-                append cbody "    rv=NULL;\n"
-            }
-		}
+		default        { append cbody "    rv=NULL;\n" }
 	}
 	# check result for errors and try reporting
     #append cbody $cleanupstring;
@@ -1286,21 +1259,11 @@ proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
 		break
 	}
 
-	array set tags {}
 	foreach {t n} $adefs {
-	    if {[string range $t 0 2] eq "ptr"} {
-	        set tag [string range $t 4 end]
-            set types($n) "ptr"
-            set tags($n) $tag
-            lappend varnames $n
-            lappend cnames "_$n"
-            lappend cargs "$tag* $n"
-	    } else {
-            set types($n) $t
-            lappend varnames $n
-            lappend cnames _$n
-            lappend cargs "$t $n"
-        }
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
 	}
 
 	# Handle return type
@@ -1516,38 +1479,17 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 		break
 	}
 
-	array set tags {}
 	foreach {t n} $adefs {
-	    if {[string range $t 0 2] eq "ptr"} {
-	        set tag [string range $t 4 end]
-            set types($n) "ptr"
-            set tags($n) $tag
-            lappend varnames $n
-            lappend cnames "_$n"
-            lappend cargs "$tag* $n"
-	    } else {
-            set types($n) $t
-            lappend varnames $n
-            lappend cnames _$n
-            lappend cargs "$t $n"
-        }
+		set types($n) $t
+		lappend varnames $n
+		lappend cnames _$n
+		lappend cargs "$t $n"
 	}
 
 	# Handle return type
-	set rtag ""
-	if {[string range $rtype 0 2] eq "ptr"} {
-        set rtag [string range $rtype 4 end]
-        set rtype "ptr"
-    }
 	switch -- $rtype {
 		ok      {
 			set rtype2 "int"
-		}
-		ptr     {
-		    set rtype2 "void*"
-		    if {$rtag ne ""} {
-		        set rtype2 "${rtag}*"
-		    }
 		}
 		string - dstring - vstring - fstring {
 			set rtype2 "char*"
@@ -1641,19 +1583,6 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 			char* {
 				append cbody "  _$x = Tcl_GetString(objv\[$n]);" "\n"
 			}
-			ptr {
-			    set tag ""
-			    catch {set tag $tags($x)}
-			    if {$tag eq ""} {
-			        set tag NULL
-			    } else {
-			        set tag \"$tag\"
-                };#"
-			    #Cinv_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **ptr,char* tag)
-			    append cbody " int cv  = Cinv_GetPointerFromObj(ip, objv\[$n],(void*) &_$x,$tag);" "\n"
-			    append cbody " if(cv!=TCL_OK) return TCL_ERROR; " "\n"
-			    
-			}
 			default {
 				append cbody "  _$x = objv\[$n];" "\n"
 			}
@@ -1663,12 +1592,8 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 
 	# Call wrapped function
 	if {$rtype != "void"} {
-        if {$rtype == "ptr"} {
-            append cbody "  rv = "
-        } else {
-            append cbody "  rv = "
-        }
-    }
+		append cbody "  rv = "
+	}
 	append cbody "${cname}([join $cnames {, }]);" "\n"
 
 	# Return types supported by critcl
@@ -1710,7 +1635,6 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 		dstring        { append cbody "  $tcl_setstringresult" "\n" }
 		vstring        { append cbody "  Tcl_SetResult(ip, rv, TCL_VOLATILE);" "\n" }
 		fstring        { append cbody "  Tcl_SetResult(ip, rv, ((Tcl_FreeProc *) free));" "\n" }
-		ptr            { append cbody "  Tcl_SetObjResult(ip,Cinv_NewPointerObj((void*)rv, \"$rtag\"));" "\n"  }
 		default        { append cbody "  Tcl_SetObjResult(ip, rv); /*Tcl_DecrRefCount(rv);*/" "\n" }
 	}
 
