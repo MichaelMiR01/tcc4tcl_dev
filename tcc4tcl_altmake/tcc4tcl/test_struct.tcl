@@ -6,7 +6,7 @@ catch {console show}
 
 lappend auto_path .
 package require tcc4tcl
-load ./cinvoke_tclcmd[info sharedlibextension]
+package require tclcinvoke
 
 set handle [tcc4tcl::new]
 

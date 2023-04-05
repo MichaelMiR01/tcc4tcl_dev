@@ -212,7 +212,7 @@ namespace eval tcc4tcl {
 	proc _cwrap {handle name adefs rtype} {
 		upvar #0 $handle state
 
-		set wrap [uplevel 1 [list ::tcc4tcl::wrap $name $adefs $rtype "#" "" 1]]
+		set wrap [uplevel 1 [list ::tcc4tcl::wrap $name $adefs $rtype "#" ""]]
 
 		set wrapped [lindex $wrap 0]
 		set wrapper [lindex $wrap 1]
@@ -868,10 +868,15 @@ namespace eval tcc4tcl {
                 return "TCC_PREPROCESS_OK"
 		    }
 			"memory" {
-                set r [tcc compile $code]
-
+                if {[catch {
+                    set r [tcc compile $code]
+                } e]} {
+                    ::tcc4tcl::debugcode $code $e
+                    error "Compilation failed"
+                }
                 if {[string trim $r] ne ""} {
-                    puts "Compile result:\n$r\n"
+                    puts "Compile result:\n";
+                    ::tcc4tcl::debugcode $code $r
                 }
                 if {[info exists state(procs)] && [llength $state(procs)] > 0} {
                     foreach {procname cname_obj} $state(procs) {
@@ -960,7 +965,25 @@ namespace eval tcc4tcl {
 
 proc ::tcc4tcl::checkname {n} {expr {[regexp {^[a-zA-Z0-9_]+$} $n] > 0}}
 proc ::tcc4tcl::cleanname {n} {regsub -all {[^a-zA-Z0-9_]+} $n _}
-
+proc ::tcc4tcl::debugcode {code result} {
+    # check in result for warnings and errors and give according lines of source
+    set ccode [split $code \n] 
+    foreach rline [split $result \n] {
+        puts $rline
+        catch {
+            set rparts [split $rline :]
+            if {[llength $rparts]<3} {
+                # invalid result, skip;
+            } else {
+                # get parts
+                lassign $rparts rtype rlinenr rrest
+                if {$rtype eq "<string>"} {
+                    puts "\t[lindex $ccode [expr $rlinenr-1]]"
+                }
+            }
+        }
+    }
+}
 # proc tcc4tcl::tclwrap takes a tclproc definition
 # and constructs the tcl_eval code from it
 # usage
@@ -1475,7 +1498,7 @@ proc ::tcc4tcl::cproc {name adefs rtype {body "#"}} {
 	return [$handle go]
 }
 
-proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0}} {
+proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""}} {
 	if {$cname == ""} {
 		set cname c_[tcc4tcl::cleanname $name]
 	}
@@ -1570,10 +1593,7 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""} {includePrototype 0
 		append code "\}\n"
 	} else {
 		set cname [namespace tail $name]
-
-		if {$includePrototype} {
-			append code "$rtype2 ${cname}($cargs_str);\n"
-		}
+        append code "$rtype2 ${cname}($cargs_str);\n"
 	}
 
 	# Create wrapper function
