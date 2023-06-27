@@ -12,10 +12,11 @@ namespace eval tcc4tcl {
 	variable __lastsyms ""
 	variable __symtable ""
 	variable __symtable_auto 1
-
+	
 	set dir [file dirname [info script]]
 	set dir [file normalize $dir]
-	#puts "TCC DIR IS $dir"
+	
+	#puts "TCC DIR IS $dir ([file normalize $dir])"
 	if {[info command ::tcc4tcl] == ""} {
 		catch { 
 		    load {} tcc4tcl 
@@ -616,7 +617,7 @@ namespace eval tcc4tcl {
         #puts "Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
         switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
             "Linux-*" {
-                set dir [file normalize $dir]
+                #set dir [file normalize $dir]
                 #puts "Linux $dir"
                 # could use ::tcl::pkgconfig in future versions
                 $handle add_include_path  "${dir}/include/"
@@ -638,8 +639,8 @@ namespace eval tcc4tcl {
                 $handle add_include_path  "${dir}/include/generic"
                 $handle add_include_path  "${dir}/include/xlib"
                 $handle add_include_path  "${dir}/include/generic/win"
-                #$handle add_include_path  "${dir}/win32"
-                #$handle add_include_path  "${dir}/win32/winapi"
+                $handle add_include_path  "${dir}/win32"
+                $handle add_include_path  "${dir}/win32/winapi"
                 set outfileext dll
                 set tclstub tclstub86elf
                 set tkstub tkstub86elf
@@ -825,7 +826,8 @@ namespace eval tcc4tcl {
 		foreach path $state(add_lib_path) {
 			tcc add_library_path $path
 		}
-		tcc add_library_path  "${dir}/lib/"
+		tcc add_library_path  "${dir}/lib"
+		tcc add_library_path  "${dir}/libtcc"
 
 		set ccoptions ""
 		catch {
@@ -1030,7 +1032,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 	set cnames {}  
 	set cbody {}
 	set code {}
-
+	append cbody "#include <stdio.h>\n"
 	# if first arg is "Tcl_Interp*", pass it without counting it as a cmd arg
 	while {1} {
 		if {[lindex $adefs 0] eq "Tcl_Interp*"} {

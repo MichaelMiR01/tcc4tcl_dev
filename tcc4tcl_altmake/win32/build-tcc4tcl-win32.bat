@@ -131,7 +131,7 @@ for %%f in (*tcc.exe *tcc.dll) do @del %%f
 echo start building %D% 
 rem @echo off
 
-set CC2="%CC% -include conf_win32.h -O2 -s"
+set CC2="%CC% -include conf_win32.h -O2 -s -m32"
 
 echo calling ./buildtcc.bat  -t %T% -c %CC2%
 call ./build-tcc.bat -t %T% -c %CC2%
@@ -195,6 +195,7 @@ echo %CC% %target% -Wfatal-errors -DHAVE_TCL_H %D% -I%tccdir% -I%topdir%/include
 %CC% %target% -Wfatal-errors -DHAVE_TCL_H %D% -I%tccdir% -I%topdir%/include/generic -c %tccdir%/tcc.c -o"libtcc.o" -O2
 echo %CC% %target% -shared -s -DHAVE_TCL_H %D% %STATICLIBC% -I%tccdir% -I%topdir%/include/generic -I%topdir%/include/generic/win -Itcc  %tcc4tcldir%/tcc4tcl.c  -Llib -L%topdir%/lib -ltclstub86  "libtcc.o" -o"tcc4tcl.dll"
 %CC% %target% -shared -s -DHAVE_TCL_H %D% %STATICLIBC% -I%tccdir% -I%topdir%/include/generic -I%topdir%/include/generic/win -Itcc  %tcc4tcldir%/tcc4tcl.c  -Llib -L%topdir%/lib -ltclstub86  "libtcc.o" -o"tcc4tcl.dll"
+
 
 @if "%EXES_ONLY%"=="yes" goto :files-done
 

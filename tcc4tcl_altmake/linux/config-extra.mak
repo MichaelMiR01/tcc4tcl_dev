@@ -10,9 +10,11 @@ tcc4tcl.o: tcc4tcl/tcc4tcl.c tcc.h libtcc.h config.h
 	$(CC) $(CPPFLAGS) $${TCC4TCL_CFLAGS} -DHAVE_TCL_H -DLIBTCC_AS_DLL -I.  -o tcc4tcl.o -c tcc4tcl/tcc4tcl.c
 
 tcc4tcl: tcc4tcl.o libtcc4tcl.o libtclstub86.a
+	@rm -fv ./tccdbg.o 
 	. ./conf_tcc4tcl.sh; \
 	$(CC) -shared -s -o tcc4tcl.so tcc4tcl.o libtcc4tcl.o $${TCC4TCL_LIBS}
-	
+
+		
 # create tcl-package tarball from *current* git branch (including tcc-doc.html
 # and converting two files to CRLF)
 TCC4TCL-VERSION = 0.40.0

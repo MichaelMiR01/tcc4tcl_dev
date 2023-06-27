@@ -16,7 +16,8 @@
     #endif
     # @include "tcctools.c"
 */    
-
+#ifndef HAVE_IOMAP_H
+#define HAVE_IOMAP_H
 #ifdef HAVE_TCL_H
 #include "config_tcc4tcl.h"
 #ifndef USE_TCL_STUBS
@@ -43,6 +44,8 @@ void tcc_list_symbols(TCCState *s, void *ctx,
 #define close t_close
 #define fgets t_fgets
 #define dup t_dup
+
+#define stat(a,b) _t_stat(a,b)
 
 #define MAXCHAN 128
 #define CHANBASE 10000
@@ -388,5 +391,26 @@ FILE *t_fdopen(int fd, const char *mode) {
     return f;
 }
 
+int t_stat(const char *entryname, struct stat *st) { 
+    //
+    Tcl_StatBuf statBuf; 
+    Tcl_Obj *path;
+    //printf("tclstat %s \n",entryname);
+    path = Tcl_NewStringObj(entryname,-1);
+    Tcl_IncrRefCount(path);
+    int r=Tcl_FSStat(path, &statBuf); 
+    Tcl_DecrRefCount(path);
+    if(r) {
+        #undef stat
+        return stat(entryname,st);
+        #define stat(a,b) t_stat(a,b)
+    }
+    st->st_size=statBuf.st_size;
+    st->st_dev=statBuf.st_dev;
+    st->st_ino=statBuf.st_ino;
+    //printf("tclstat %s %d %d %d\n",entryname,statBuf.st_size,statBuf.st_dev,statBuf.st_ino);
+    return r;
+}
 
 #endif // HAVE_TCL_H
+#endif // HAVE_IOMAP_H 
