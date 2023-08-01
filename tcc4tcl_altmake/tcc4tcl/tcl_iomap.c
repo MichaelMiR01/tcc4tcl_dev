@@ -23,6 +23,7 @@
 #ifndef USE_TCL_STUBS
 #define USE_TCL_STUBS
 #endif
+#include <sys/stat.h>
 #ifndef _TCL
 #include <tcl.h>
 #endif
