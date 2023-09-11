@@ -26,8 +26,14 @@ while {[gets $fh line] > -1} {
             puts $line
             set line [replace_line $line]
             puts $line
-        }       
-        puts $fhout $line
+     }       
+     if {[line_find2 $line]>0} {
+            puts "Modified $fname.bat, change () to __ in $linenr"
+            puts $line
+            set line [replace_line2 $line]
+            puts $line
+     }       
+     puts $fhout $line
 }
 close $fh
 close $fhout
@@ -43,6 +49,16 @@ proc replace_line {text} {
 }
 proc line_find {text} {
     set preg "if (.*?)\\((.*?)\\)(.*?)\\((.*?)\\)(.*?)"
+    return [regexp $preg $text]
+}
+proc replace_line2 {text} {
+    set preg "if (.*?)echo>>(.*)(.*)"
+    set repl "if \\1 (echo>> "
+    set r "[regsub $preg $text $repl])"
+    return $r
+}
+proc line_find2 {text} {
+    set preg "if (.*?)echo(.*?)"
     return [regexp $preg $text]
 }
 
