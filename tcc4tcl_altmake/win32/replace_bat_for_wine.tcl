@@ -33,6 +33,19 @@ while {[gets $fh line] > -1} {
             set line [replace_line2 $line]
             puts $line
      }       
+     if {[line_find3 $line]==0} {
+            puts "Modified $fname.bat, change () to __ in $linenr"
+            puts $line
+            append line "\nrem insert here"
+append line "\necho>>..\\config.h #ifdef TCC_TARGET_X86_64"
+append line "\necho>>..\\config.h #define TCC_LIBTCC1 \"libtcc1-64.a\""
+append line "\necho>>..\\config.h #else"
+append line "\necho>>..\\config.h #define TCC_LIBTCC1 \"libtcc1-32.a\""
+append line "\necho>>..\\config.h #endif"
+            
+            puts $line
+     }
+         
      puts $fhout $line
 }
 close $fh
@@ -60,6 +73,13 @@ proc replace_line2 {text} {
 proc line_find2 {text} {
     set preg "if (.*?)echo(.*?)"
     return [regexp $preg $text]
+}
+
+proc line_find3 {text} {
+    # restore old naming convention for libtcc1.a
+    # insert behind initial echo of config.h
+    set preg {echo>..\config.h #define TCC_VERSION "%VERSION%"}
+    return [string first $preg $text]
 }
 
 change_bat $fname

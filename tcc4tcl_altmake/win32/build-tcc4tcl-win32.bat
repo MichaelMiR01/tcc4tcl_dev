@@ -137,6 +137,11 @@ echo calling ./buildtcc.bat  -t %T% -c %CC2%
 call ./build-tcc.bat -t %T% -c %CC2%
 @if errorlevel 1 goto :the_end
 echo Ok, now building tcc4tcl
+rem hack to keep the win libtcc1.a, so user can decide later wich to use
+rem since grischka mob 0.9.28 Wed, 6 Sep 2023 22:21:15 +0200 (6 22:21 +0200)
+rem there is no different naming to libtcc1 in win/linux
+rem and we don't want to hack on the original build process, do we?
+copy .\lib\libtcc1.a .\lib\libtcc1-%T%.a
 
 :config.h
 echo building tcc4tcl config
