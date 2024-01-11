@@ -75,7 +75,7 @@ static int Tcc4tclSetupCompiler(TCCState *s) {
             #endif
             tcc_add_symbol(s, "tclStubsPtr", &tclStubsPtr);
             tcc_add_symbol(s, "tclIntStubsPtr", &tclIntStubsPtr);
-            tcc_add_symbol(s, "Tcl_initStubs", &Tcl_InitStubs);
+            tcc_add_symbol(s, "Tcl_InitStubs", &Tcl_InitStubs);
         }
     #endif
 
@@ -528,7 +528,7 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
         #endif
 		tcc_add_symbol(s, "tclStubsPtr", &tclStubsPtr);
 		tcc_add_symbol(s, "tclIntStubsPtr", &tclIntStubsPtr);
-		tcc_add_symbol(s, "Tcl_initStubs", &Tcl_InitStubs);
+		tcc_add_symbol(s, "Tcl_InitStubs", &Tcl_InitStubs);
 	}
 #endif
 */
