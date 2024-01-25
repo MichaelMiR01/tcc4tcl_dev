@@ -249,7 +249,26 @@ Tclh_PointerUnwrap(Tcl_Interp *interp,
  * needs to match the pointer size of the platform: long on LP64, Tcl_WideInt on
  * LLP64 (e.g. WIN64).
  */
-#if SIZEOF_VOID_P == SIZEOF_LONG
+ 
+#include "stdint.h"
+
+#if INTPTR_MAX == INT32_MAX
+    #define THIS_IS_32_BIT_ENVIRONMENT
+    #define SIZEOF_VOID_P 4
+    #define INTTYPE int
+#elif INTPTR_MAX == INT64_MAX
+    #define THIS_IS_64_BIT_ENVIRONMENT
+    #define SIZEOF_VOID_P 8
+    #if SIZEOF_VOID_P == __SIZEOF_LONG__
+        #define INTTYPE long
+    #else
+        #define INTTYPE long long
+    #endif
+#else
+    #error "Environment not 32 or 64-bit."
+#endif
+ 
+#if SIZEOF_VOID_P == __SIZEOF_LONG__
 #  define CINV_POINTER_IS_LONG 1
 #elif SIZEOF_VOID_P == 8 && defined(HAVE_WIDE_INT)
 #  define CINV_POINTER_IS_LONG 0
