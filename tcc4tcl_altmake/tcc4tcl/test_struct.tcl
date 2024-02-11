@@ -19,9 +19,8 @@ $handle ccode {
     
 }
 $handle cproc getstructdirect {ptr.clientdatax mystruct} char* {
-    char buf[256];
-    sprintf(buf,"got pointer to %p\n",mystruct);
-    sprintf(buf,"got value a %d b %d\n",mystruct->a,mystruct->b);
+    static char buf[256];
+    sprintf(buf,"got pointer to %p\ngot value a %d b %d\n",mystruct,mystruct->a,mystruct->b);
     return buf;
 }
 
@@ -61,7 +60,7 @@ puts "Setting values"
 cd1 set a 10
 cd1 set b 20
 puts "Ptr is : [cd1 getptr] [PointerUnwrap [cd1 getptr]]"
-puts [getstructdirect [cd1 getptr]]
+puts "getstructdirect\n[getstructdirect [cd1 getptr]]"
 
 CType myint int 123
 CType myintres int 123
@@ -110,8 +109,8 @@ $handle cproc getstructindirect {int a int b} ptr.clientdatax {
 
 #puts [$handle code]
 $handle go
-puts [getstructindirect 12 34]
-puts [getstructindirect 23 45]
+puts "getstructindirect [getstructindirect 12 34]"
+puts "getstructindirect [getstructindirect 23 45]"
 
 
 

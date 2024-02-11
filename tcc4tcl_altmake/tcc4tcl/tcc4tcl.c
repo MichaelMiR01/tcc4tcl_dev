@@ -39,6 +39,21 @@
 #include "tcc.h"
 #include "config_tcc4tcl.h"
 
+/* In tcc 0.9.28 mob b671fc0 from Feb, 9th 2024 an API/ABI break appeared
+in tcc_relocate, dropping the second argument
+old version tcc_relocate(s, TCC_RELOCATE_AUTO)
+new version tcc_relocate(s)
+*/
+
+#ifdef TCC_RELOCATE_AUTO
+#define _TCC_RELOCATE_ tcc_relocate(s, TCC_RELOCATE_AUTO)
+#else
+#define _TCC_RELOCATE_ tcc_relocate(s)
+#endif
+
+
+
+
 struct TclTCCState {
 	TCCState *s;
 	int relocated;
@@ -263,7 +278,7 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
                 return TCL_ERROR;
             }
 
-            val_p = (void *) val;
+            val_p = (void *) (intptr_t) val;
 
             if (!ts->initok) {
                 Tcc4tclSetupCompiler(s);
@@ -279,7 +294,7 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
             }
 
             if (!ts->relocated) {     
-                if(tcc_relocate(s, TCC_RELOCATE_AUTO)!=0) {
+                if(_TCC_RELOCATE_!=0) {
                     Tcl_AppendResult(interp, "relocating failed", NULL);
                     return TCL_ERROR;
                 } else {
@@ -311,7 +326,7 @@ static int Tcc4tclHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	        }
             
 	        if (!ts->relocated) {
-		    if(tcc_relocate(s, TCC_RELOCATE_AUTO)!=0) {
+		    if(_TCC_RELOCATE_!=0) {
 		        Tcl_AppendResult(interp, "relocating failed", NULL);
 		        return TCL_ERROR;
 		    } else {
@@ -405,7 +420,7 @@ if (ppfp && ppfp != stdout) {
                 return TCL_ERROR;
             }
             if (!ts->relocated) {     
-                if(tcc_relocate(s, TCC_RELOCATE_AUTO)!=0) {
+                if(_TCC_RELOCATE_!=0) {
                     Tcl_AppendResult(interp, "relocating failed", NULL);
                     return TCL_ERROR;
                 } else {
@@ -417,7 +432,7 @@ if (ppfp && ppfp != stdout) {
                 Tcl_AppendResult(interp, "symbol '", Tcl_GetString(objv[2]),"' not found", NULL);
                 return TCL_ERROR;
             }
-            sym_addr = Tcl_NewWideIntObj((Tcl_WideInt) val_p);
+            sym_addr = Tcl_NewWideIntObj((intptr_t) val_p);
             Tcl_SetObjResult(interp, sym_addr);
             return TCL_OK; 
         case TCC4TCL_OUTPUT_FILE:
@@ -547,6 +562,8 @@ static int Tcc4tclCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 #   define DLLIMPORT __declspec(dllimport)
 #   define DLLEXPORT __declspec(dllexport)
 #else
+#undef DLLIMPORT
+#undef DLLEXPORT
 #   define DLLIMPORT __attribute__(dllimport)
 #   if defined(__GNUC__) && __GNUC__ > 3
 #       define DLLEXPORT __attribute__ ((visibility("default")))
