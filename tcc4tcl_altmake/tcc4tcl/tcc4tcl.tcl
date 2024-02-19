@@ -632,6 +632,7 @@ namespace eval tcc4tcl {
                 set tkstub tkstub86_64
                 set DLLEXPORT "__attribute__ ((visibility(\"default\")))"
                 set libdir $dir/lib
+                set libdir2 $libdir
             }
             "Windows*" {
                 #puts "Windows $dir"
@@ -646,10 +647,12 @@ namespace eval tcc4tcl {
                 set tkstub tkstub86elf
                 set DLLEXPORT "__declspec(dllexport)"
                 set libdir $dir
+                set libdir2 $dir/lib_win32
             }
             default {
                 puts "Unknow Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
                 set libdir $dir/lib
+                set libdir2 $libdir
                 return
             }
         }
@@ -804,7 +807,7 @@ namespace eval tcc4tcl {
 		switch -- $state(type) {
 			"package" {
 				set tcc_type "dll"
-				$handle add_library_path  "${dir}/lib/"
+				$handle add_library_path  $libdir2
 				$handle add_library $tclstub
 				$handle add_library $tkstub
 			}
@@ -826,7 +829,7 @@ namespace eval tcc4tcl {
 		foreach path $state(add_lib_path) {
 			tcc add_library_path $path
 		}
-		tcc add_library_path  "${dir}/lib"
+		tcc add_library_path  $libdir2
 		tcc add_library_path  "${dir}/libtcc"
 
 		set ccoptions ""

@@ -40,7 +40,7 @@ IR = $(IM) mkdir -p $2 && cp -r $1/. $2
 IC = $(IM) mkdir -p $2 && cp -r $1 $2
 IM = $(info -> $2 : $1)@
 
-B_O = bcheck.o bt-exe.o bt-log.o bt-dll.o
+B_O = bcheck.o bt-exe.o bt-log.o bt-dll.o runmain.o
 
 # install progs & libs
 #make  tcc4tcl package

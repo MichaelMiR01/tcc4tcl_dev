@@ -135,6 +135,9 @@ set CC2="%CC% -include conf_win32.h -O2 -s -m32"
 
 echo calling ./buildtcc.bat  -t %T% -c %CC2%
 call ./build-tcc.bat -t %T% -c %CC2%
+rem there is eventually runmain.o missing, build it
+rem.\tcc -B. -m%T% -c ../lib/runmain.c -o lib/runmain.o
+
 @if errorlevel 1 goto :the_end
 echo Ok, now building tcc4tcl
 rem hack to keep the win libtcc1.a, so user can decide later wich to use
@@ -226,18 +229,22 @@ for %%f in (*tcc.exe *tcc.dll *.dll) do @copy>nul %%~ff %BIN%\%%~nf%%~xf
 copy %tccdir%\tcc4tcl\*.tcl %BIN%\
 copy %topdir%\tcc4tcl\*.tcl %BIN%\
 rem copy .\*.tcl %BIN%\
+set INSTLIBWIN32=%INST%\lib
+if "%HAS_WIN32_DIR%"=="yes" set INSTLIBWIN32=%INST%\lib_win32
 
-@if not exist %INST%\lib mkdir %INST%\lib
+@if not exist %INSTLIBWIN32% mkdir %INSTLIBWIN32%
 
-copy %tcc4tcldir%\lib\*.a %INST%\lib\
-copy %topdir%\lib\*.a %INST%\lib\
-copy %win32%\lib\*.* %INST%\lib\
-copy .\lib\lib\*.a %INST%\lib\
+copy %tcc4tcldir%\lib\*.a %INSTLIBWIN32%\
+copy %topdir%\lib\*.a %INSTLIBWIN32%\
+copy %win32%\lib\*.* %INSTLIBWIN32%\
+copy .\lib\lib\*.a %INSTLIBWIN32%\
 
-copy %tcc4tcldir%\lib\*.def %INST%\lib\
-copy %topdir%\lib\*.def %INST%\lib\
-copy %win32%\lib\*.def %INST%\lib\
-copy .\lib\lib\*.def %INST%\lib\
+copy %tcc4tcldir%\lib\*.def %INSTLIBWIN32%\
+copy %topdir%\lib\*.def %INSTLIBWIN32%\
+copy %win32%\lib\*.def %INSTLIBWIN32%\
+copy .\lib\lib\*.def %INSTLIBWIN32%\
+
+if "%HAS_WIN32_DIR%"=="yes" ren lib lib_win32
 
 @if not exist %INST%\doc mkdir %INST%\doc
 echo copy %tcc4tcldir%\doc\* %INST%\doc\
