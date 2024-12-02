@@ -1,9 +1,14 @@
 # tcc.tcl - library routines for the tcc wrapper (Mark Janssen)
 # heavily modified by MiR to support TK properly and some debug features
-namespace eval tcc4tcl {
-	variable dir 
-	variable count
-	variable loadedfrom
+
+# set tcc4tcl::dir to the base dir where includes and libs are living if necessary
+# after loading the extension this will be set to the directory where tcc4tcl.tcl and pkgIndex live
+
+namespace eval ::tcc4tcl {
+    
+	variable dir ""
+	variable count 0
+	variable loadedfrom "-unknown-"
 	variable needInterp 0
 	# lastsyms gets symbols from last compilation
 	# symtable can hold reference to all symbols
@@ -88,6 +93,7 @@ namespace eval tcc4tcl {
 	    }
 	    return $adr	    
 	}
+	
 	proc new {{output ""} {pkgName ""} {compile_type ""}} {
 		variable dir
 		variable count
@@ -112,7 +118,7 @@ namespace eval tcc4tcl {
 		if {$compile_type ne ""} {
 		    set type $compile_type
 		}
-		array set $handle [list code "" type $type filename $output package $pkgName add_inc_path "" add_lib_path "" add_lib "" add_file "" add_macros "" add_symbol ""]
+		array set $handle [list code "" type $type filename $output package $pkgName add_inc_path "" add_lib_path "" add_lib "" add_file "" add_macros "" add_symbol "" loot_interp 0]
 
 		proc $handle {cmd args} [string map [list @@HANDLE@@ $handle] {
 			set handle {@@HANDLE@@}
@@ -228,16 +234,15 @@ namespace eval tcc4tcl {
 
 	proc _tclwrap {handle name {adefs {}} {rtype void} {cname ""}} {
 		upvar #0 $handle state
-		set code [tcc4tcl::tclwrap $name $adefs $rtype $cname]
+		set code [::tcc4tcl::tclwrap $name $adefs $rtype $cname]
 		append state(code) $code "\n"
 	}
 
 	proc _tclwrap_eval {handle name {adefs {}} {rtype void} {cname ""}} {
 		upvar #0 $handle state
-		set code [tcc4tcl::tclwrap_eval $name $adefs $rtype $cname]
+		set code [::tcc4tcl::tclwrap_eval $name $adefs $rtype $cname]
 		append state(code) $code "\n"
 	}
-
 
 	proc _cproc {handle name adefs rtype {body "#"}} {
 		upvar #0 $handle state
@@ -315,7 +320,18 @@ namespace eval tcc4tcl {
 		# Convert body into a C-style string
 		binary scan $body H* cbody
 		set cbody [regsub -all {..} $cbody {\\x&}]
-
+		# reformat for better readability in source
+        set newbody "\\\n"
+        set w 0
+		for {set i 0} {$i<[string length $body]} {incr i} {
+            append newbody [string range $cbody [expr $i*4] [expr $i*4+3]]
+            incr w 4                             
+		    if {$w>=80} {
+		        set w 0
+		        append newbody \\\n
+		    }
+		}
+		set cbody $newbody
 		# Parse optional arguments
 		foreach {argname argval} $args {
 			switch -- $argname {
@@ -438,8 +454,8 @@ namespace eval tcc4tcl {
 
 			set procname ""
 		} else {
-			set procname "::tcc4tcl::tmp::proc[clock clicks]"
-			set cbody "namespace eval ::tcc4tcl {}; namespace eval ::tcc4tcl::tmp {}; proc ${procname} {$args} { $cbody }"
+			set procname "::_tcc4tcl::tmp::proc[clock clicks]"
+			set cbody "namespace eval ::_tcc4tcl {}; namespace eval ::_tcc4tcl::tmp {}; proc ${procname} {$args} { $cbody }"
 		}
 
 		# Process all arguments
@@ -573,6 +589,9 @@ namespace eval tcc4tcl {
 		variable __symtable_auto
 		
 	    proc initModInterp {astate} {
+            if {$astate!=""} {
+                upvar $astate state
+            }
             # init module wide interp to use in external callbacks
             # set module_init "int loot_interp (Tcl_Interp* interp) {\n"
             # this code will only be used, if needInterp is set to 1
@@ -587,8 +606,7 @@ namespace eval tcc4tcl {
             append module_head "/* we install a module scope global interp here ...*/\n"
             append module_head "static Tcl_Interp*  mod_Tcl_interp;\n"
             append module_head "static int mod_Tcl_errorCode;\n"
-    
-            set name "loot_interp"
+            set name "__loot_interp"
             set adefs {Tcl_Interp* interp}
             set rtype int
             set body $module_init
@@ -599,11 +617,57 @@ namespace eval tcc4tcl {
             set module_init ""
             if {$astate!=""} {
                 upvar $astate state
-                lappend state(procs) $name [list $tclname]
+                if {[lsearch  -exact $state(procs) $name]==-1} {
+                    lappend state(procs) $name [list $tclname]
+                }
                 set module_init "$wrapped \n$wrapper \n"
             }
 
             return "$module_head\n$module_init\n"
+	    }
+	    
+	    proc finalizeProclist {handle} {
+	        upvar #0 $handle state
+	        #
+            # lets isolate some sugar funcs
+            # all cprocs with leading __ will get removed now
+            # __before_tclinit
+            # __after_tclinit
+            # will be put into the init routine
+            set state(__before_tclinit) ""
+            set state(__after_tclinit) ""
+            set realprocs {}
+            if {[info exists state(procs)] && [llength $state(procs)] > 0} {
+                # scan for special procs and move them to specialprocs
+                foreach {procname cname_obj} $state(procs) {
+                    set cname [lindex $cname_obj 0]
+
+                    if {[llength $cname_obj] > 1} {
+                        set obj [lindex $cname_obj 1]
+                    } else {
+                        set obj "NULL"
+                    }
+                    #puts "$procname :-> $obj ($cname_obj)"
+                    if {[string range $procname 0 1]=="__"} {
+                        # mark special proc with __
+                        #puts "found special proc $procname"
+                        lappend state(specialprocs) $procname $cname_obj
+                        set cname [lindex $cname_obj 0]
+                        if {$procname=="__before_tclinit"} {
+                            set state(__before_tclinit) "   c_$procname (interp);//init\n"
+                        }
+                        if {$procname=="__after_tclinit"} {
+                            set state(__after_tclinit) "   c_$procname  (interp);\n"
+                        }
+                    } else {
+                        lappend realprocs $procname $cname_obj
+                    }
+                }
+                # all special "__xxx" cprocs are now removed from the regular proclist
+                # so we don't want to TclCreateCommand from these 
+                # set state(procs) $realprocs
+            }
+            
 	    }
 	    
 		upvar #0 $handle state
@@ -613,12 +677,12 @@ namespace eval tcc4tcl {
 		set module_init ""
 		
 		variable hasTK 0
-		
+		finalizeProclist $handle
         #puts "Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
         switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
             "Linux-*" {
                 #set dir [file normalize $dir]
-                #puts "Linux $dir"
+                # puts "Linux $dir"
                 # could use ::tcl::pkgconfig in future versions
                 $handle add_include_path  "${dir}/include/"
                 $handle add_include_path  "${dir}/include/stdinc/"
@@ -631,8 +695,8 @@ namespace eval tcc4tcl {
                 set tclstub tclstub86_64
                 set tkstub tkstub86_64
                 set DLLEXPORT "__attribute__ ((visibility(\"default\")))"
-                set libdir $dir/lib
-                set libdir2 $libdir
+                set libdir $dir
+                set libdir2 $libdir/lib
             }
             "Windows*" {
                 #puts "Windows $dir"
@@ -706,13 +770,11 @@ namespace eval tcc4tcl {
 					if {[info exists state(procs)] && [llength $state(procs)] > 0} {
 						foreach {procname cname_obj} $state(procs) {
 							set cname [lindex $cname_obj 0]
-
 							if {[llength $cname_obj] > 1} {
 								set obj [lindex $cname_obj 1]
 							} else {
 								set obj "NULL"
 							}
-
 							append code "/* Immediate: Tcl_CreateObjCommand(interp, \"$procname\", $cname, $obj, Tcc4tclDeleteClientData); */\n"
 						}
 					}
@@ -721,27 +783,27 @@ namespace eval tcc4tcl {
 			"exe" - "dll" {
 				if {[info exists state(procs)] && [llength $state(procs)] > 0} {
 					append code "int _initProcs(Tcl_Interp *interp) \{\n"
+                     append code $state(__before_tclinit)
 					
 					foreach {procname cname_obj} $state(procs) {
-						set cname [lindex $cname_obj 0]
-
-						if {[llength $cname_obj] != 1} {
-							error "ClientData not supported in exe / dll mode"
-						}
-
-						append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
+                        set cname [lindex $cname_obj 0]
+                        if {[llength $cname_obj] != 1} {
+                            error "ClientData not supported in exe / dll mode"
+                        }
+                        append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
 					}
+                     append code $state(__after_tclinit)
 					
-                    if {$needInterp!=0} {
+                     if {$needInterp!=0} {
                         append code "  mod_Tcl_interp = interp;\n"
-                    }
+                     }
 					append code "\}"
 				}
 			}
 			"package" {
 				set packageName [lindex $state(package) 0]
 				if {$needInterp!=0} {
-				    set modInitCode [initModInterp ""]
+				    set modInitCode [initModInterp state]
 				}
 				set packageVersion [lindex $state(package) 1]
 				set tclversion [lindex $state(package) 2]
@@ -770,30 +832,32 @@ namespace eval tcc4tcl {
 				append code "    return TCL_ERROR;\n"
 				append code "  \}\n"
 				append code "#endif\n"
-
+                 append code $state(__before_tclinit)
 				if {[info exists state(procs)] && [llength $state(procs)] > 0} {
 					foreach {procname cname_obj} $state(procs) {
-						set cname [lindex $cname_obj 0]
-
-						if {[llength $cname_obj] != 1} {
-							error "ClientData not supported in exe / dll mode"
-						}
-
-						append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
+					    if {[string range $procname 0 1]=="__"} {
+					        # don't add special procs
+					    } else {
+                            set cname [lindex $cname_obj 0]
+                            if {[llength $cname_obj] != 1} {
+                                error "ClientData not supported in exe / dll mode"
+                            }
+                            append code "  Tcl_CreateObjCommand(interp, \"$procname\", $cname, NULL, NULL);\n"
+                        }
 					}
 				}
-
 				append code "  Tcl_PkgProvide(interp, \"$packageName\", \"$packageVersion\");\n"
 				if {$needInterp!=0} {
                     append code "  mod_Tcl_interp = interp;\n"
                 }
+				append code $state(__after_tclinit)
 				append code "  return(TCL_OK);\n"
 				append code "\}"
 			}
 		}
 		
 		if {($modInitCode eq "")&&($needInterp!=0)} {
-		    set modInitCode [initModInterp {*}state]
+		    set modInitCode [initModInterp state]
 		}
 		
         #add header late
@@ -839,7 +903,6 @@ namespace eval tcc4tcl {
         
 		tcc set_options $ccoptions
 		
-		
 		foreach lib $state(add_lib) {
 			tcc add_library $lib
 		}
@@ -847,8 +910,6 @@ namespace eval tcc4tcl {
 		foreach lib $state(add_file) {
 			tcc add_file $lib
 		}
-
-		
 		
 		foreach {sym adr} $state(add_symbol) {
 			tcc add_symbol $sym $adr 
@@ -921,10 +982,15 @@ namespace eval tcc4tcl {
                     }
                 }
             
-                set r [tcc compile $code]
-            
+                if {[catch {
+                    set r [tcc compile $code]
+                } e]} {
+                    ::tcc4tcl::debugcode $code $e
+                    error "Compilation failed"
+                }
                 if {[string trim $r] ne ""} {
-                    puts "Compile result:\n$r\n"
+                    puts "Compile result:\n";
+                    ::tcc4tcl::debugcode $code $r
                 }
                 
                 foreach lib $state(add_lib) {
@@ -958,7 +1024,13 @@ namespace eval tcc4tcl {
             tkstart
         }
         if {$needInterp!=0} {
-            loot_interp
+            __loot_interp
+        }
+        if {$state(__before_tclinit)!=""} {
+            __before_tclinit
+        }
+        if {$state(__after_tclinit)!=""} {
+            __after_tclinit
         }
 
 		# Cleanup
@@ -1011,7 +1083,7 @@ proc ::tcc4tcl::debugcode {code result} {
 # Initialisation of global mod_Tcl_Interp is done in the modules initialisation routine, if neccessary
 #
 
-proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
+proc ::tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
     # uses Tcl_EvalObjv
     variable needInterp
     set hasInterp 0
@@ -1019,7 +1091,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 		return "No TCL Proc name given"
 	}
 
-	set wname tcl_[tcc4tcl::cleanname $name]
+	set wname tcl_[::tcc4tcl::cleanname $name]
 	if {$cname != ""} {
 		set wname $cname
 	}
@@ -1275,7 +1347,7 @@ proc tcc4tcl::tclwrap {name {adefs {}} {rtype void} {cname ""}} {
 	return $cbody
 }
 
-proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
+proc ::tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
     # uses Tcl_Eval
     variable needInterp
     set hasInterp 0
@@ -1283,7 +1355,7 @@ proc tcc4tcl::tclwrap_eval {name {adefs {}} {rtype void} {cname ""}} {
 		return "No TCL Proc name given"
 	}
 
-	set wname tcl_[tcc4tcl::cleanname $name]
+	set wname tcl_[::tcc4tcl::cleanname $name]
 	if {$cname != ""} {
 		set wname $cname
 	}
@@ -1505,10 +1577,10 @@ proc ::tcc4tcl::cproc {name adefs rtype {body "#"}} {
 
 proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""}} {
 	if {$cname == ""} {
-		set cname c_[tcc4tcl::cleanname $name]
+		set cname c_[::tcc4tcl::cleanname $name]
 	}
 
-	set wname tcl_[tcc4tcl::cleanname $name]
+	set wname tcl_[::tcc4tcl::cleanname $name]
 
 	# Fully qualified proc name
 	set name [lookupNamespace $name]
@@ -1748,7 +1820,7 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""}} {
 	return [list $code $cbody $wname]
 }
 
-namespace eval tcc4tcl {namespace export cproc}
+namespace eval ::tcc4tcl {namespace export cproc}
 package provide tcc4tcl "0.41"
 
 
