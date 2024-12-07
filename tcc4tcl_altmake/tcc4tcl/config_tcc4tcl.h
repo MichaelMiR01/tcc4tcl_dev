@@ -10,11 +10,21 @@
 #include <stdint.h>
 #endif
 
+#if !(TCC_TARGET_I386 || TCC_TARGET_X86_64 || TCC_TARGET_ARM || TCC_TARGET_ARM64 || TCC_TARGET_RISCV64 || TCC_TARGET_C67)
+#define TCC_TARGET_X86_64 1
+#define CONFIG_TRIPLET "x86_64-linux-gnu"
+#endif
+
 #ifndef _WIN32
 #ifdef TCC_TARGET_X86_64
+//# define CONFIG_LDDIR "lib"
+// this seems oddly to oscillate in deferrent mobs, 
+// due to changes in makefile and config
+// i don't understand and can't reflect on
 # define CONFIG_LDDIR "lib/x86_64-linux-gnu"
 #endif
 #endif
+
 
 /*
 #ifdef _WIN32
@@ -38,3 +48,7 @@ typedef int64_t __time64_t;
 #endif
 #define CONFIG_TCCDIR "."
 #endif
+
+#define TCC4TCL_DODELETE
+
+#define TCC4TCL_DODELETE

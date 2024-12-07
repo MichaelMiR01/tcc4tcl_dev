@@ -229,19 +229,28 @@ namespace eval ::tcc4tcl {
 		append state(code) $wrapper "\n"
 
 		lappend state(procs) $name [list $tclname]
-		lappend state(procdefs) $name [list $tclname $rtype $adefs]
+		set cname "$name"
+		lappend state(procdefs) $name [list $cname $rtype $adefs _cwrap]
 	}
 
 	proc _tclwrap {handle name {adefs {}} {rtype void} {cname ""}} {
 		upvar #0 $handle state
 		set code [::tcc4tcl::tclwrap $name $adefs $rtype $cname]
 		append state(code) $code "\n"
+		
+		# careful, if we export this, the result might be a dll without tcl procs
+		# if {$cname==""} {set cname $name}
+		# lappend state(procdefs) $name [list $cname $rtype $adefs _tclwrap] 
 	}
 
 	proc _tclwrap_eval {handle name {adefs {}} {rtype void} {cname ""}} {
 		upvar #0 $handle state
 		set code [::tcc4tcl::tclwrap_eval $name $adefs $rtype $cname]
 		append state(code) $code "\n"
+
+		# careful, if we export this, the result might be a dll without tcl procs
+		# if {$cname==""} {set cname $name}
+		# lappend state(procdefs) $name [list $cname $rtype $adefs _tclwrap_eval] 
 	}
 
 	proc _cproc {handle name adefs rtype {body "#"}} {
@@ -257,7 +266,8 @@ namespace eval ::tcc4tcl {
 		append state(code) $wrapper "\n"
 
 		lappend state(procs) $name [list $tclname]
-		lappend state(procdefs) $name [list $tclname $rtype $adefs] 
+		set cname "c_$name"
+		lappend state(procdefs) $name [list $cname $rtype $adefs _cproc] 
 	}
 
 	proc _ccode {handle code} {
@@ -318,6 +328,9 @@ namespace eval ::tcc4tcl {
 
 	proc _proc {handle cname adefs rtype body args} {
 		# Convert body into a C-style string
+		upvar #0 $handle state
+		lappend state(procdefs) $cname [list $cname $rtype $adefs _proc] 
+		
 		binary scan $body H* cbody
 		set cbody [regsub -all {..} $cbody {\\x&}]
 		# reformat for better readability in source
@@ -679,44 +692,50 @@ namespace eval ::tcc4tcl {
 		variable hasTK 0
 		finalizeProclist $handle
         #puts "Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
+        
+        # if tcc4tcl is loaded from a zip-enabled libtcc.dll
+        # have to correct the directory accordingly        
+        set mdir $dir
+        #if {[string first zip: $dir]==0} {
+        #    set mdir "."
+        #}
         switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
             "Linux-*" {
                 #set dir [file normalize $dir]
                 # puts "Linux $dir"
                 # could use ::tcl::pkgconfig in future versions
-                $handle add_include_path  "${dir}/include/"
-                $handle add_include_path  "${dir}/include/stdinc/"
+                $handle add_include_path  "${mdir}/include/"
+                $handle add_include_path  "${mdir}/include/stdinc/"
                 $handle add_include_path  "/usr/include/"
                 $handle add_include_path  "/usr/include/x86_64-linux-gnu"
-                $handle add_include_path  "${dir}/include/generic"
-                $handle add_include_path  "${dir}/include/xlib"
-                $handle add_include_path  "${dir}/include/generic/unix"
+                $handle add_include_path  "${mdir}/include/generic"
+                $handle add_include_path  "${mdir}/include/xlib"
+                $handle add_include_path  "${mdir}/include/generic/unix"
                 set outfileext so
                 set tclstub tclstub86_64
                 set tkstub tkstub86_64
                 set DLLEXPORT "__attribute__ ((visibility(\"default\")))"
                 set libdir $dir
-                set libdir2 $libdir/lib
+                set libdir2 $mdir/lib
             }
             "Windows*" {
-                #puts "Windows $dir"
-                $handle add_include_path  "${dir}/include/"
-                $handle add_include_path  "${dir}/include/generic"
-                $handle add_include_path  "${dir}/include/xlib"
-                $handle add_include_path  "${dir}/include/generic/win"
-                $handle add_include_path  "${dir}/win32"
-                $handle add_include_path  "${dir}/win32/winapi"
+                $handle add_include_path  "${mdir}/include/"
+                $handle add_include_path  "${mdir}/include/generic"
+                $handle add_include_path  "${mdir}/include/xlib"
+                $handle add_include_path  "${mdir}/include/generic/win"
+                $handle add_include_path  "${mdir}/win32"
+                $handle add_include_path  "${mdir}/win32/winapi"
                 set outfileext dll
                 set tclstub tclstub86elf
                 set tkstub tkstub86elf
                 set DLLEXPORT "__declspec(dllexport)"
                 set libdir $dir
-                set libdir2 $dir/lib_win32
+                set libdir2 $mdir/lib_win32
             }
             default {
                 puts "Unknow Plattform $::tcl_platform(os)-$::tcl_platform(pointerSize)"
-                set libdir $dir/lib
-                set libdir2 $libdir
+                set libdir $mdir
+                set libdir2 $mdir/lib
                 return
             }
         }
