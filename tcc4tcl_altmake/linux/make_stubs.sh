@@ -98,3 +98,5 @@ fi
 rm tclStubLib.o tclOOStubLib.o tclTomMathStubLib.o tkStubLib.o ttkStubLib.o
 
 echo "Stubsbuilding ready OK"
+cp libtcl*.a lib/
+cp libtk*.a lib/

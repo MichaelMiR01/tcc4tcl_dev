@@ -40,7 +40,7 @@ IR = $(IM) mkdir -p $2 && cp -r $1/. $2
 IC = $(IM) mkdir -p $2 && cp -r $1 $2
 IM = $(info -> $2 : $1)@
 
-B_O = bcheck.o bt-exe.o bt-log.o bt-dll.o runmain.o
+B_O = bcheck.o bt-exe.o bt-log.o bt-dll.o runmain.o libtcl*.a libtk*.a
 
 # install progs & libs
 #make  tcc4tcl package
@@ -54,6 +54,7 @@ pkg: tcc4tcl.so
 	@
 	@$(call IC,$(TOPSRC)/include/*, "$(TCC4TCL_TRG)/include")
 	@$(call IC,$(TOPSRC)/include/*.h $(TOPSRC)/tcclib.h,"$(TCC4TCL_TRG)/include/stdinc")
+	@$(call IC,$(TOPSRC)/lib/*, "$(TCC4TCL_TRG)/lib")
 	@$(call IC,$(TCC4TCL_SRC)/lib/*, "$(TCC4TCL_TRG)/lib")
 	@$(call IC,$(TCC4TCL_SRC)/doc/*, "$(TCC4TCL_TRG)/doc")
 	@$(call $(if $(findstring .so,$(LIBTCC)),IBw,IFw),$(LIBTCC),"$(TCC4TCL_TRG)")
