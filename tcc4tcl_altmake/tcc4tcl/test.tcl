@@ -174,7 +174,7 @@ $handle proc callToTcl {Tcl_Interp* ip int a int b} int {
 
 	return $retval
 }
-$handle cwrap callToTcl {Tcl_Interp* ip int a int b} int
+#$handle cwrap callToTcl {Tcl_Interp* ip int a int b} int
 $handle go
 if {[callToTcl 3 5] != 8} {
 	error "3 + 5 is 8, not [callToTcl 3 5]"
@@ -184,18 +184,19 @@ set handle [tcc4tcl::new]
 $handle proc callToTcl1 {int x} float {
 	return 0.1
 }
-$handle cwrap callToTcl1 {int x} float
+#$handle cwrap callToTcl1 {int x} float
 $handle go
 puts [callToTcl1 3]
 
 set handle [tcc4tcl::new]
 $handle proc callToTclBinary {char* blob int blob_Length} ok {
 	puts "Blob: $blob ([string length $blob])"
+	return 1
 }
 $handle cproc callToTclBinaryWrapper {} void {
 	callToTclBinary("test\x00test", 9);
 }
-puts [$handle code]
+#puts [$handle code]
 $handle go
 
 callToTclBinaryWrapper

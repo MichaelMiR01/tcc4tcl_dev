@@ -11,6 +11,7 @@ namespace eval ::tcc4tcl {
 	variable loadedfrom "-unknown-"
 	variable needInterp 0
     variable needPointers 0
+    variable haszip 0
 
 	# lastsyms gets symbols from last compilation
 	# symtable can hold reference to all symbols
@@ -1644,8 +1645,52 @@ proc ::tcc4tcl::wrap {name adefs rtype {body "#"} {cname ""}} {
 
 	return [list $code $cbody $wname]
 }
+proc ::tcc4tcl::testzip {} {
+    # test if _ZIPTCC_ is defined in compiler
+    # which would be set be ziptcc in tccdefs.h
+    # since 2026-05-22 MiR
+    variable haszip
+    variable dir
+    set syms ""
+    set ::tcc4tcl::haszip 0
+    set cstr "#ifdef _ZIPTCC_\nint haszip() {return 1;}\n#else\nint hasnozip() {return 0;}\n#endif\n"
+    switch -glob -- $::tcl_platform(os)-$::tcl_platform(pointerSize) {
+        "Linux-*" {
+            set libdir2 $dir/lib
+        }
+        "Windows*" {
+            set libdir2 $dir/lib_win32
+        }
+        default {
+            set libdir2 $dir/lib
+        }
+    }
+    catch {
+        ::tcc4tcl $tcc4tcl::dir memory _tt_
+        _tt_ compile $cstr
+        _tt_ add_library_path $libdir2
+        _tt_ command haszip haszip
+        set syms [_tt_ list_symbols]
+        set iszip [lsearch $syms haszip]
+        if {$iszip>-1} {set haszip 1}
+        set e ""
+    } e
+    if {$e ne ""} {
+        # _ZIPTCC_ not found?
+        #puts "err: $e"
+    } else {
+        # It's a ziptcc, seems like.
+        #puts "ziptcc found"
+    }
+    catch {
+        _tt_ delete
+    }
+    
+    return $haszip    
+}
 
 namespace eval ::tcc4tcl {namespace export cproc}
+::tcc4tcl::testzip
 package provide tcc4tcl "0.41"
 
 

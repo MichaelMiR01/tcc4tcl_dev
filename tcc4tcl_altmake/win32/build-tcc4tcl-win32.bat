@@ -191,6 +191,12 @@ echo %CC% %AR%
 copy libtclstub86.a .\lib\
 del *.o
 del libtclstub86.a
+%CC% -m%T% -D_WIN%T% -c %FPATH%tkStubLib.c %INCLUDES%
+%CC% -m%T% -D_WIN%T% -c %FPATH%ttkStubLib.c %INCLUDES%
+%AR% libtkstub86.a tkStubLib.o ttkStubLib.o
+copy libtkstub86.a .\lib\
+del *.o
+del libtkstub86.a
 
 rem build all other stubs by tcc
 echo Ok, building stub libs

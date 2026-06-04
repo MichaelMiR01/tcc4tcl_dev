@@ -25,6 +25,18 @@
 #endif
 #endif
 
+/* library search paths */
+#ifndef CONFIG_TCC_LIBPATHS2
+# if defined TCC_TARGET_PE || defined _WIN32
+#  define CONFIG_TCC_LIBPATHS \
+    "{B}/lib"
+# else
+#  define CONFIG_TCC_LIBPATHS \
+    "{B}" PATHSEP ALSO_TRIPLET(CONFIG_SYSROOT "/usr/lib") \
+    PATHSEP ALSO_TRIPLET(CONFIG_SYSROOT "/usr/" CONFIG_LDDIR)
+# endif
+#endif
+
 
 /*
 #ifdef _WIN32
@@ -48,7 +60,9 @@ typedef int64_t __time64_t;
 #endif
 #define CONFIG_TCCDIR "."
 #endif
+# define CONFIG_TCC_CRTPREFIX \
+    USE_TRIPLET(CONFIG_SYSROOT "/usr/lib") \
+    PATHSEP ALSO_TRIPLET(CONFIG_SYSROOT "/usr/" CONFIG_LDDIR)
 
 #define TCC4TCL_DODELETE
 
-#define TCC4TCL_DODELETE
